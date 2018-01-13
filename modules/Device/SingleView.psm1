@@ -100,20 +100,20 @@ Import-Module "$ModuleInvocationPath\..\SortedTreeView\SortedTreeView.psm1" -Pre
 $ImagePath = "$ModuleInvocationPath\..\..\resources"
 $BinPath   = "$ModuleInvocationPath\..\..\bin"
 
+###############################################################################
 ### Settings Management -------------------------------------------------------
 $Settings = $null
 $SettingsPath = "$ModuleInvocationPath\settings.json"
 $SettingsDialog = "$ModuleInvocationPath\settings.ps1"
 
-###############################################################################
 ## Load Settings
 if (Test-Path -LiteralPath $SettingsPath -PathType Leaf) {
     $Settings = ConvertFrom-Json ((Get-Content $SettingsPath) -join '')
 }
 
 ###############################################################################
-# Main Menu Definitions
-### File Menu -------------------------------------------------------------
+### Main Menu Definitions
+## File Menu -------------------------------------------------------------
 $Menu = @{}
 $Menu.SaveAsCsv = New-Object System.Windows.Forms.ToolStripMenuItem("CSV", $null, {
     param($sender, $e)
@@ -187,7 +187,7 @@ $Menu.Settings = New-Object System.Windows.Forms.ToolStripMenuItem("Settings", $
     $Settings = & "$SettingsDialog" $Settings
 })
 
-# Dynamic Fields Menu
+## Dynamic Fields Menu --------------------------------------------------------
 $Menu.Fields = New-Object System.Windows.Forms.ToolStripMenuItem("Fields")
 $Menu.Fields.Name = 'DeviceFields'
 $Menu.Fields.DropDown.Add_Closing({
@@ -199,7 +199,8 @@ $Menu.Fields.DropDown.Add_Closing({
 })
 
 ###############################################################################
-# Device Data Management
+### Device Data Management
+
 function Load-DeviceList {
     param(
         [Parameter(Mandatory = $true)]
@@ -305,7 +306,7 @@ function Load-DeviceList {
 }
 
 ###############################################################################
-# Control Object Factories
+### Object Factories - Window Components
 
 function New-ViewControl {
     param(
@@ -465,7 +466,7 @@ function New-DataPanel {
 }
 
 ###############################################################################
-# TreeView Component Static Resources
+### TreeView Component Static Resources
 $ImageList = New-Object System.Windows.Forms.ImageList
 $ImageList.ColorDepth = [System.Windows.Forms.ColorDepth]::Depth32Bit
 $ImageList.ImageSize  = New-Object System.Drawing.Size(16,16)
@@ -476,7 +477,7 @@ $ImageList.Images.Add('monitored',
 $ImageList.Images.Add('not-monitored',
     [System.Drawing.Icon]::new("$ImagePath\tag-blue-delete.ico"))
 
-# Parameter Encapsulation Object
+## Parameter Encapsulation Object ---------------------------------------------
 $TreeViewDefinition = [PSCustomObject]@{
     # [System.Windows.Forms.TreeView] Properties
     Properties = @{}
@@ -497,7 +498,7 @@ $TreeViewDefinition.Handlers.AfterSelect = {
     }
 }
 
-# Parameter Encapsulation Object
+## Parameter Encapsulation Object ---------------------------------------------
 $DataNodeDefinition = [PSCustomObject]@{
     # Custom NoteProperties
     Custom     = @{}
@@ -610,7 +611,7 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
     return $context
 }
 
-# Parameter Encapsulation Object
+## Parameter Encapsulation Object ---------------------------------------------
 $GroupNodeDefinition = [PSCustomObject]@{
     # Custom Properties
     Custom     = @{}
