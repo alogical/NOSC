@@ -18,17 +18,21 @@ Add-Type -AssemblyName System.Windows.Forms
 function Initialize-Components {
     param(
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.Form]$Window,
+            [System.Windows.Forms.Form]
+            $Window,
 
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.TabControl]$Parent,
+            [System.Windows.Forms.TabControl]
+            $Parent,
 
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.MenuStrip]$MenuStrip,
+            [System.Windows.Forms.MenuStrip]
+            $MenuStrip,
 
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
-            [System.Collections.ArrayList]$OnLoad
+            [System.Collections.ArrayList]
+            $OnLoad
     )
 
     # Register Menus
@@ -39,28 +43,13 @@ function Initialize-Components {
 
     $Loader = [PSCustomObject]@{
         ValidationContainer = $ValidationContainer
-        OutputContainer = $OutputContainer
-        CommandOutputTextBox = $CommandOutputTextBox
-        ExpectedOutputTextBox = $ExpectedOutputTextBox
-
-        ComplianceDetailLayout = $ComplianceDetailLayout
-        ComplianceDeviceDetailTextBox = $ComplianceDeviceDetailTextBox
-        ComplianceRuleDetailTextBox = $ComplianceRuleDetailTextBox
-        ComplianceRuleDescriptionTextBox = $ComplianceRuleDescriptionTextBox
+        #OutputContainer = $OutputContainer
     }
     Add-Member -InputObject $Loader -MemberType ScriptMethod -Name Load -Value {
         param($sender, $e)
         # Split the text box areas 50/50 of the parent container size
         $this.ValidationContainer.SplitterDistance = $this.ValidationContainer.Width / 2
-        $this.OutputContainer.SplitterDistance = $this.OutputContainer.Width / 2
-
-        $this.CommandOutputTextBox.BringToFront()
-        $this.ExpectedOutputTextBox.BringToFront()
-
-        $this.ComplianceDetailLayout.BringToFront()
-        $this.ComplianceDeviceDetailTextBox.BringToFront()
-        $this.ComplianceRuleDetailTextBox.BringToFront()
-        $this.ComplianceRuleDescriptionTextBox.BringToFront()
+        #$this.OutputContainer.SplitterDistance = $this.OutputContainer.Width / 2
     }
     [void]$OnLoad.Add($Loader)
 }
@@ -79,36 +68,36 @@ $ModuleInvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyComm
 
 ###############################################################################
 # Scan Config Tab Content Container Definitions
-#region
-$ScanConfigTab = New-Object System.Windows.Forms.TabPage
-    $ScanConfigTab.Dock = [System.Windows.Forms.DockStyle]::Fill
-    $ScanConfigTab.Text = "Scan Configuration"
-    [void]$TabContainer.TabPages.Add( $ScanConfigTab )
 
-$ScanConfigBaseContainer = New-Object System.Windows.Forms.SplitContainer
-    $ScanConfigBaseContainer.Dock = [System.Windows.Forms.DockStyle]::Fill
-    $ScanConfigBaseContainer.Orientation = [System.Windows.Forms.Orientation]::Vertical
-    $ScanConfigBaseContainer.Panel1.BackColor = [System.Drawing.Color]::White
-    $ScanConfigBaseContainer.Panel2.BackColor = [System.Drawing.Color]::White
-    $ScanConfigBaseContainer.BackColor = [System.Drawing.Color]::Black
+$ConfigTab = New-Object System.Windows.Forms.TabPage
+    $ConfigTab.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $ConfigTab.Text = "Scan Configuration"
+    [void]$TabContainer.TabPages.Add( $ConfigTab )
 
-    $ScanConfigTab.Controls.Add( $ScanConfigBaseContainer )
+$BaseContainer = New-Object System.Windows.Forms.SplitContainer
+    $BaseContainer.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $BaseContainer.Orientation = [System.Windows.Forms.Orientation]::Vertical
+    $BaseContainer.Panel1.BackColor = [System.Drawing.Color]::White
+    $BaseContainer.Panel2.BackColor = [System.Drawing.Color]::White
+    $BaseContainer.BackColor = [System.Drawing.Color]::Black
+
+    $ConfigTab.Controls.Add( $BaseContainer )
 
 # Security Technical Implementation Guide (STIG) Rules TreeView
 $RuleTreeView = New-Object System.Windows.Forms.TreeView
     $RuleTreeView.Dock = [System.Windows.Forms.DockStyle]::Fill
 
-    $ScanConfigBaseContainer.Panel1.Controls.Add( $RuleTreeView )
+    $BaseContainer.Panel1.Controls.Add( $RuleTreeView )
 
 # Security Technical Implementation Guide (STIG) Rules Details
-$ScanConfigRightContainer = New-Object System.Windows.Forms.SplitContainer
-    $ScanConfigRightContainer.Dock = [System.Windows.Forms.DockStyle]::Fill
-    $ScanConfigRightContainer.Orientation = [System.Windows.Forms.Orientation]::Horizontal
-    $ScanConfigRightContainer.Panel1.BackColor = [System.Drawing.Color]::White
-    $ScanConfigRightContainer.Panel2.BackColor = [System.Drawing.Color]::White
-    $ScanConfigRightContainer.BackColor = [System.Drawing.Color]::Black
+$RightContainer = New-Object System.Windows.Forms.SplitContainer
+    $RightContainer.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $RightContainer.Orientation = [System.Windows.Forms.Orientation]::Horizontal
+    $RightContainer.Panel1.BackColor = [System.Drawing.Color]::White
+    $RightContainer.Panel2.BackColor = [System.Drawing.Color]::White
+    $RightContainer.BackColor = [System.Drawing.Color]::Black
 
-    $ScanConfigBaseContainer.Panel2.Controls.Add( $ScanConfigRightContainer )
+    $BaseContainer.Panel2.Controls.Add( $RightContainer )
 
 $ValidationContainer = New-Object System.Windows.Forms.SplitContainer
     $ValidationContainer.Dock = [System.Windows.Forms.DockStyle]::Fill
@@ -117,7 +106,7 @@ $ValidationContainer = New-Object System.Windows.Forms.SplitContainer
     $ValidationContainer.Panel2.BackColor = [System.Drawing.Color]::White
     $ValidationContainer.BackColor = [System.Drawing.Color]::Black
 
-    $ScanConfigRightContainer.Panel1.Controls.Add( $ValidationContainer )
+    $RightContainer.Panel1.Controls.Add( $ValidationContainer )
 
     $CompliantOutput = New-Object System.Windows.Forms.TextBox
         $CompliantOutput.Dock = [System.Windows.Forms.DockStyle]::Fill
@@ -137,12 +126,11 @@ $ValidationContainer = New-Object System.Windows.Forms.SplitContainer
 
         $ValidationContainer.Panel2.Controls.Add( $NonCompliantOutput )
 
-$ScanRuleDetailTextBox = New-Object System.Windows.Forms.TextBox
-    $ScanRuleDetailTextBox.Dock = [System.Windows.Forms.DockStyle]::Fill
-    $ScanRuleDetailTextBox.WordWrap = $true
-    $ScanRuleDetailTextBox.ReadOnly = $true
-    $ScanRuleDetailTextBox.BackColor = [System.Drawing.Color]::White
-    $ScanRuleDetailTextBox.Text = "This is the security baseline rule detail text area."
+$RuleDetail = New-Object System.Windows.Forms.TextBox
+    $RuleDetail.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $RuleDetail.WordWrap = $true
+    $RuleDetail.ReadOnly = $true
+    $RuleDetail.BackColor = [System.Drawing.Color]::White
+    $RuleDetail.Text = "This is the security baseline rule detail text area."
 
-    $ScanConfigRightContainer.Panel2.Controls.Add( $ScanRuleDetailTextBox )
-#endregion
+    $RightContainer.Panel2.Controls.Add( $RuleDetail )
