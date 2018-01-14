@@ -27,36 +27,40 @@ function Initialize-Components {
     param(
         [Parameter(Mandatory = $true)]
             [AllowNull()]
-            [System.Windows.Forms.Form]$Window,
+            [System.Windows.Forms.Form]
+            $Window,
 
         [Parameter(Mandatory = $true)]
             [AllowNull()]
-            [System.Windows.Forms.TabControl]$Parent,
+            [System.Windows.Forms.TabControl]
+            $Parent,
 
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.MenuStrip]$MenuStrip,
+            [System.Windows.Forms.MenuStrip]
+            $MenuStrip,
 
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
-            [System.Collections.ArrayList]$OnLoad
+            [System.Collections.ArrayList]
+            $OnLoad
     )
 
     # Register Menus
-    [void]$MenuStrip.Items.Add($PuttyMenu)
+    [void]$MenuStrip.Items.Add($Menu.Putty.Root)
 }
 
-function Open-Putty ($ip) {
+function Open-Putty ($IP) {
     if ($Script:Credential -eq $null) {
         $Script:Credential = Get-Credential
     }
     $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
     $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
-    $ConnectString = ("{0} {1}@{2} -pw `$pw" -f 
+    $connect = ("{0} {1}@{2} -pw `$pw" -f
         $putty,
         $Credential.UserName,
-        $ip
+        $IP
     )
-    Invoke-Expression $ConnectString
+    Invoke-Expression $connect
     [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
 }
 
@@ -78,15 +82,17 @@ Export-ModuleMember -Variable Credential
 
 $putty = "$ModuleInvocationPath\..\..\bin\putty.exe"
 
-# Main Menu Definitions
-#region
-### File Menu -------------------------------------------------------------
-$SubMenu1 = @()
-$SubMenu1 += New-Object System.Windows.Forms.ToolStripMenuItem("Reset Credential", $null, {
+###############################################################################
+### Main Menu Definitions
+$Menu = @{}
+
+### Main Menu -----------------------------------------------------------------
+$Menu.Putty = @{}
+$Menu.Putty.ResetCredential = New-Object System.Windows.Forms.ToolStripMenuItem("Reset Credential", $null, {
     param($sender, $e)
     $Script:Credential = Get-Credential
 })
+$Menu.Putty.ResetCredential.Name = "ResetCredential"
 
-$PuttyMenu = New-Object System.Windows.Forms.ToolStripMenuItem("Putty", $null, $SubMenu1)
-$PuttyMenu.Name = 'PuttyMenu'
-#endregion
+$Menu.Putty.Root = New-Object System.Windows.Forms.ToolStripMenuItem("PuTTY", $null, @($Menu.Putty.ResetCredential))
+$Menu.Putty.Name = 'Putty'
