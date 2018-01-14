@@ -588,12 +588,47 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
     [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripSeparator) )
     [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripMenuItem("PuTTY", $null, {
         param ($sender, $e)
-        $Menu = $sender.GetCurrentParent()
-        [System.Windows.Forms.TreeView] $TreeView = $Menu.SourceControl
-        [System.Windows.Forms.TreeNode] $Node = $TreeView.SelectedNode
+        $menu = $sender.GetCurrentParent()
+        [System.Windows.Forms.TreeView] $treeview = $menu.SourceControl
+        [System.Windows.Forms.TreeNode] $node = $treeview.SelectedNode
+
+        $target = [PSCustomObject]@{
+            Hostname = $node.Tag.Device_Hostname
+            IP       = $node.Tag.ip
+        }
 
         # Dependency... Putty.psm1; imported globally by initialization script nosc.ps1
-        Open-PTYPutty $Node.Tag.IP
+        Open-PTYPutty $target
+    })))
+
+    # PUTTY MULTISELECT -------------------------------------------------------
+    [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripMenuItem("PuTTY", $null, {
+        param ($sender, $e)
+        $menu = $sender.GetCurrentParent()
+        [System.Windows.Forms.TreeView] $treeview = $menu.SourceControl
+        [System.Windows.Forms.TreeNode] $node = $treeview.SelectedNode
+
+        # Multi-select (checked) support.  GetChecked returns a System.Array
+        $records = New-Object System.Collections.ArrayList
+        $checked = $treeview.GetChecked()
+
+        if ($checked) {
+            $records.AddRange($checked)
+        }
+
+        if (!$node.Checked) {
+            [Void]$records.Add($node.Tag)
+        }
+
+        # Dependency... Putty.psm1; imported globally by initialization script nosc.ps1
+        foreach ($record in $records) {
+            $target = [PSCustomObject]@{
+                Hostname = $record.Device_Hostname
+                IP       = $record.ip
+            }
+
+            Open-PTYPutty $target
+        }
     })))
 
     ## REMOTE DESKTOP ---------------------------------------------------------
