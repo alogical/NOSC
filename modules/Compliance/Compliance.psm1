@@ -425,12 +425,16 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
     [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripSeparator) )
     [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripMenuItem("Putty", $null, {
         param ($sender, $e)
-        $Menu = $sender.GetCurrentParent()
-        [System.Windows.Forms.TreeView] $TreeView = $Menu.SourceControl
-        [System.Windows.Forms.TreeNode] $Node = $TreeView.SelectedNode
+        $menu = $sender.GetCurrentParent()
+        [System.Windows.Forms.TreeView] $treeview = $menu.SourceControl
+        [System.Windows.Forms.TreeNode] $node = $treeview.SelectedNode
 
         # Dependency... Putty.psm1; imported by initialization script nosc.ps1
-        Open-PTYPutty $Node.Tag.Device
+        $target = [PSCustomObject]@{
+            Hostname = $node.Tag.Hostname
+            IP       = $node.Tag.Device
+        }
+        Open-PTYPutty $target
     })))
     return $context
 }

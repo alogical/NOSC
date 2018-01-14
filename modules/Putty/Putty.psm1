@@ -49,16 +49,20 @@ function Initialize-Components {
     [void]$MenuStrip.Items.Add($Menu.Putty.Root)
 }
 
-function Open-Putty ($IP) {
-    if ($Script:Credential -eq $null) {
-        $Script:Credential = Get-Credential
+function Open-Putty ($Target) {
+    if ($Credential -eq $null) {
+        $Credential = Get-Credential
     }
+
+    $profile = Set-RegistryProfile $Target
+
     $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
     $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
-    $connect = ("{0} {1}@{2} -pw `$pw" -f
-        $putty,
+    $connect = ("{0} -load `"{1}`" -l {2} -pw `$pw" -f
+        $PuTTY,
+        $profile,
         $Credential.UserName,
-        $IP
+        $Target.IP
     )
     Invoke-Expression $connect
     [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
@@ -80,7 +84,42 @@ Export-ModuleMember -Variable Credential
 ###############################################################################
 ###############################################################################
 
-$putty = "$ModuleInvocationPath\..\..\bin\putty.exe"
+$PuTTY = "$ModuleInvocationPath\..\..\bin\putty.exe"
+$confdb = "$ModuleInvocationPath\..\..\database\puttydb"
+
+function Set-RegistryProfile ($Device) {
+
+    $hostname = $Device.Hostname.Trim() -replace '[^\w]', '-'
+
+    $conf    = Join-Path $confdb ("{0}.reg" -f $hostname)
+    $default = Join-Path $confdb default.reg
+
+    if (!(Test-Path -Path $conf)){
+        Copy-Item $default $conf | Out-Null
+    }
+    $profile = Get-Content $conf
+
+    $i = 0
+    foreach ($line in $profile){
+        switch -regex ($line) {
+            '^\[HKEY_CURRENT_USER\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions[^]]+]$' {
+                $profile[$i] = "[HKEY_CURRENT_USER\SOFTWARE\SimonTatham\PuTTY\Sessions\{0}]" -f $hostname
+            }
+            '^"HostName"="[^"]*"$' {
+                $profile[$i] = "`"HostName`"=`"{0}`"" -f $Device.ip
+            }
+            '^"WinTitle"="[^"]*"$' {
+                $profile[$i] = "`"WinTitle`"=`"{0}  [{1}]`"" -f $hostname, $Device.ip
+            }
+        }
+        $i++
+    }
+
+    $profile > $conf
+    $command = "regedit /s $conf"
+    Invoke-Expression $command
+    return $hostname
+}
 
 ###############################################################################
 ### Main Menu Definitions
