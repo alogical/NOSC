@@ -93,36 +93,37 @@ Export-ModuleMember -Function *
 # of objects as components of those objects.
 $Static = @{}
 $Static.ProcessDefinition = {
-    param([System.Windows.Forms.TreeNode]$node, $record, [Object]$definition)
+    param([System.Windows.Forms.TreeNode]$Node, [Object]$Record, [Object]$Definition)
+
     # CUSTOM PRE-PROCESSORS
-    foreach ($processor in $definition.Processors.Values) {
-        & $processor $node $record | Out-Null
+    foreach ($processor in $Definition.Processors.Values) {
+        & $processor $Node $Record | Out-Null
     }
 
     # CUSTOM PROPERTIES
-    foreach ($property in $definition.Custom.GetEnumerator()) {
-        Add-Member -InputObject $node -MemberType NoteProperty -Name $property.Key -Value $property.Value
+    foreach ($property in $Definition.NoteProperties.GetEnumerator()) {
+        Add-Member -InputObject $Node -MemberType NoteProperty -Name $property.Key -Value $property.Value
     }
 
-    # STANDARD PROPERTIES
-    foreach ($property in $definition.Properties.GetEnumerator()) {
-        $node.($property.Key) = $property.Value
+    # BUILT-IN PROPERTIES - late binding (dynamic)
+    foreach ($property in $Definition.Properties.GetEnumerator()) {
+        $Node.($property.Key) = $property.Value
     }
 
     # CUSTOM METHODS
-    foreach ($method in $definition.Methods.GetEnumerator()) {
-        Add-Member -InputObject $node -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+    foreach ($method in $Definition.Methods.GetEnumerator()) {
+        Add-Member -InputObject $Node -MemberType ScriptMethod -Name $method.Key -Value $method.Value
     }
 
-    # EVENT HANDLERS - EVENT ADD METHOD CALLED BY LATE BINDING
-    foreach ($handler in $definition.Handlers.GetEnumerator()) {
-        $node.("Add_$($handler.Key)")($handler.Value)
+    # EVENT HANDLERS - late binding (dynamic)
+    foreach ($handler in $Definition.Handlers.GetEnumerator()) {
+        $Node.("Add_$($handler.Key)")($handler.Value)
     }
 }
 $Static.TreeNodeChecked = {
-    param($state)
+    param($State)
 
-    $this.Checked = $state
+    $this.Checked = $State
     ForEach ($child in $this.Nodes) {
         $child.SetChecked($State)
     }
@@ -133,15 +134,15 @@ $Static.NewDataBucket = {
     Write-Debug "Creating new data bucket"
 
     $bucket = [PSCustomObject]@{
-        Field   = $Field
-        Content = New-Object System.Collections.ArrayList
-        Buffer  = $Buffer
+        Field      = $Field
+        Content    = New-Object System.Collections.ArrayList
+        Buffer     = $Buffer
         Definition = $Definition
     }
 
     Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Add -Value {
-        param($record)
-        [void] $this.Content.Add($record)
+        param($Record)
+        [void] $this.Content.Add($Record)
     }
 
     Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Build -Value {
@@ -159,11 +160,11 @@ $Static.NewDataBucket = {
             }
 
             # CUSTOM PROPERTIES
-            foreach ($property in $this.Definition.Custom.GetEnumerator()) {
+            foreach ($property in $this.Definition.NoteProperties.GetEnumerator()) {
                 Add-Member -InputObject $node -MemberType NoteProperty -Name $property.Key -Value $property.Value
             }
 
-            # STANDARD PROPERTIES
+            # STANDARD PROPERTIES - late binding (dynamic)
             foreach ($property in $this.Definition.Properties.GetEnumerator()) {
                 $node.($property.Key) = $property.Value
             }
@@ -173,7 +174,7 @@ $Static.NewDataBucket = {
                 Add-Member -InputObject $node -MemberType ScriptMethod -Name $method.Key -Value $method.Value
             }
 
-            # Append to Quick Access ArrayList
+            # SHARED BUFFER - Add to quick access ArrayList for all nodes
             [void]$this.Buffer.Add($node)
 
             Write-Output $node
@@ -187,18 +188,18 @@ $Static.NewDataBucketFactory = {
 
     Write-Debug "Creating a new data bucket factory"
 
-    $Factory = [PSCustomObject]@{
+    $factory = [PSCustomObject]@{
         DataLabel  = $DataLabel
         Buffer     = $Buffer
         Definition = $Definition
     }
 
-    Add-Member -InputObject $Factory -MemberType ScriptMethod -Name New -Value {
+    Add-Member -InputObject $factory -MemberType ScriptMethod -Name New -Value {
         Write-Debug "Calling New Data Bucket"
         return & $Static.NewDataBucket $this.DataLabel $this.Buffer $this.Definition
     }
 
-    return $Factory
+    return $factory
 }
 $Static.NewGroupBucket = {
     param($Rule, $Factory, [Object]$Definition)
@@ -213,9 +214,9 @@ $Static.NewGroupBucket = {
     }
 
     Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Add -Value {
-        param($record)
+        param($Record)
 
-        $value = $record.($this.Rule.Name)
+        $value = $Record.($this.Rule.Name)
 
         if (!$this.Content.ContainsKey($value)) {
                     
@@ -224,7 +225,7 @@ $Static.NewGroupBucket = {
             $this.Content.Add($value, $this.Factory.New())
         }
 
-        $this.Content[$value].Add($record)
+        $this.Content[$value].Add($Record)
     }
 
     Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Build -Value {
@@ -233,14 +234,14 @@ $Static.NewGroupBucket = {
         
         # Sort Grouping Nodes
         if ($this.Rule.SortDirection -eq 'Ascending') {
-            $Sorted = $this.Content.GetEnumerator() | Sort-Object -Property Key
+            $sorted = $this.Content.GetEnumerator() | Sort-Object -Property Key
         }
         else {
-            $Sorted = $this.Content.GetEnumerator() | Sort-Object -Property Key -Descending
+            $sorted = $this.Content.GetEnumerator() | Sort-Object -Property Key -Descending
         }
 
         # Build the Child Nodes in Sorted Order (Hashtable Key[GroupName]:Value[ChildBucket] Pairs)
-        ForEach ($pair in $Sorted) {
+        ForEach ($pair in $sorted) {
             $node = New-Object System.Windows.Forms.TreeNode($pair.Key)
 
             # CUSTOMIZE OBJECT
@@ -264,17 +265,17 @@ $Static.NewGroupFactory = {
     Write-Debug ("Creating new bucket factory [{0}]" -f $Rule.Name)
 
 
-    $Factory = [PSCustomObject]@{
+    $factory = [PSCustomObject]@{
         Rule = $Rule
         Next = $Next
         Definition = $Definition
     }
 
-    Add-Member -InputObject $Factory -MemberType ScriptMethod -Name New -Value {
+    Add-Member -InputObject $factory -MemberType ScriptMethod -Name New -Value {
         return (& $Static.NewGroupBucket $this.Rule $this.Next $this.Definition)
     }
 
-    return $Factory
+    return $factory
 }
 $Static.NewGroupConstructor = {
     param($GroupBy, $DataLabel, [System.Collections.ArrayList]$Buffer, [Object]$GroupDefinition, [Object]$NodeDefinition)
@@ -282,7 +283,7 @@ $Static.NewGroupConstructor = {
     Write-Debug ("Creating new TreeView Group Constructor {0}" -f ($GroupBy | Select-Object -Property Name | Out-String))
     Write-Debug "Data Labels Using field [$DataLabel]"
 
-    $FactoryList = New-Object System.Collections.ArrayList
+    $factories = New-Object System.Collections.ArrayList
 
     # Build Initial Grouping Level Buckets
     if ($GroupBy.Count -gt 0) {
@@ -290,50 +291,50 @@ $Static.NewGroupConstructor = {
 
         for ($i = 0; $i -le $max; $i++) {
                 
-            # MUST ONLY BE ONE TOP BUCKET
+            # MUST ONLY BE ONE TOP BUCKET /ROOT/
             if ($i -eq 0) {
-                $TopBucket = & $Static.NewGroupBucket $GroupBy[$i] $null $GroupDefinition
+                $root = & $Static.NewGroupBucket $GroupBy[$i] $null $GroupDefinition
             }
             else {
-                [void] $FactoryList.Add( (& $Static.NewGroupFactory $GroupBy[$i] $null $GroupDefinition) )
+                [void] $factories.Add( (& $Static.NewGroupFactory $GroupBy[$i] $null $GroupDefinition) )
             }
         }
 
-        # Back Reference Factories
-        $max = $FactoryList.Count - 1
+        # Factory Linking - Back Reference Factories
+        $max = $factories.Count - 1
         for ($i = 1; $i -le $max; $i++) {
-            $FactoryList[$i - 1].Next = $FactoryList[$i]
+            $factories[$i - 1].Next = $factories[$i]
         }
     }
 
     # Handle View Settings with no Grouping Levels Defined
     else {
         Write-Debug "No Grouping Defined, Top Bucket is the Data Bucket"
-        $TopBucket = & $Static.NewDataBucket $DataLabel $Buffer $NodeDefinition
+        $root = & $Static.NewDataBucket $DataLabel $Buffer $NodeDefinition
     }
             
     # Handle Back References for Multiple Grouping Level Factories
     if ($GroupBy.Count -gt 1) {
-        Write-Debug ("Data Bucket Factory Assigned to [{0}] Factory" -f $FactoryList[$max].Rule.Name)
-        $FactoryList[$max].Next = & $Static.NewDataBucketFactory $DataLabel $Buffer $NodeDefinition
+        Write-Debug ("Data Bucket Factory Assigned to [{0}] Factory" -f $factories[$max].Rule.Name)
+        $factories[$max].Next = & $Static.NewDataBucketFactory $DataLabel $Buffer $NodeDefinition
 
         # Top Bucket gets the next level bucket factory
-        $TopBucket.Factory = $FactoryList[0]
+        $root.Factory = $factories[0]
     }
 
     # Handle Single Grouping Level
     elseif ($GroupBy.Count -eq 1) {
-        # If there is only one grouping level then TopBucket gets data buckets
-        $TopBucket.Factory = & $Static.NewDataBucketFactory $DataLabel $Buffer $NodeDefinition
+        # If there is only one grouping level then root gets data buckets
+        $root.Factory = & $Static.NewDataBucketFactory $DataLabel $Buffer $NodeDefinition
     }
 
     # Build the Constructor Object
-    $Constructor = [PSCustomObject]@{
-        FactoryList = $FactoryList
-        Tree        = $TopBucket
+    $constructor = [PSCustomObject]@{
+        FactoryList = $factories
+        Tree        = $root
     }
 
-    Add-Member -InputObject $Constructor -MemberType ScriptMethod -Name AddRange -Value {
+    Add-Member -InputObject $constructor -MemberType ScriptMethod -Name AddRange -Value {
         param([System.Collections.ArrayList]$Range)
         $tree = $this.Tree
         ForEach ($record in $Range) {
@@ -341,22 +342,22 @@ $Static.NewGroupConstructor = {
         }
     }
 
-    Add-Member -InputObject $Constructor -MemberType ScriptMethod -Name Add -Value {
-        param($record)
-        $tree.Add($record)
+    Add-Member -InputObject $constructor -MemberType ScriptMethod -Name Add -Value {
+        param($Record)
+        $tree.Add($Record)
     }
 
-    Add-Member -InputObject $Constructor -MemberType ScriptMethod -Name Build -Value {
+    Add-Member -InputObject $constructor -MemberType ScriptMethod -Name Build -Value {
         $this.Tree.Build()
     }
 
-    return $Constructor
+    return $constructor
 }
 
 ###############################################################################
 # Default Handlers
-$default = @{}
-$default.AfterCheck = {
+$Default = @{}
+$Default.AfterCheck = {
     param($sender, $e)
 
     if($e.Action -eq [System.Windows.Forms.TreeViewAction]::Unknown) {
@@ -367,7 +368,7 @@ $default.AfterCheck = {
         $child.SetChecked($e.Node.Checked)
     }
 }
-$default.Click = {
+$Default.Click = {
     Param(
         # sender: the control initiating the event.
         [Parameter(Mandatory = $true, Position = 0)]
@@ -385,10 +386,10 @@ $default.Click = {
     # way to implement that functionality...
 
     # Get the TreeViewNode that was clicked (Right or Left)
-    $Target = $sender.GetNodeAt($sender.PointToClient([System.Windows.Forms.Control]::MousePosition))
+    $target = $sender.GetNodeAt($sender.PointToClient([System.Windows.Forms.Control]::MousePosition))
 
-    if ($Target -ne $null) {
-        $sender.SelectedNode = $Target
+    if ($target -ne $null) {
+        $sender.SelectedNode = $target
     }
 }
 
@@ -432,8 +433,8 @@ function New-SortedTreeView {
     )
 
     # Top Level Container
-    $Container = New-Object System.Windows.Forms.TabControl
-        $Container.Dock = [System.Windows.Forms.DockStyle]::Fill
+    $BaseContainer = New-Object System.Windows.Forms.TabControl
+        $BaseContainer.Dock = [System.Windows.Forms.DockStyle]::Fill
         
         # Attached to Parent Control by Module Component Registration Function
 
@@ -441,32 +442,34 @@ function New-SortedTreeView {
         $TreeViewTab.Dock = [System.Windows.Forms.DockStyle]::Fill
         $TreeViewTab.Text = "Explorer"
 
-        [void]$Container.TabPages.Add( $TreeViewTab )
+        [void]$BaseContainer.TabPages.Add( $TreeViewTab )
 
     # TreeView Component
     #region
     $TreeViewControl = New-Object System.Windows.Forms.TreeView
     &{
-        $TreeViewControl.Dock = [System.Windows.Forms.DockStyle]::Fill
+        $TreeViewControl.Dock       = [System.Windows.Forms.DockStyle]::Fill
         $TreeViewControl.CheckBoxes = $true
-        $TreeViewControl.ImageList = $ImageList
+        $TreeViewControl.ImageList  = $ImageList
 
-        # Late binding (Dynamic)
+        ### BUILT-IN PROPERTIES -----------------------------------------------
+        # Late binding (dynamic)
         foreach ($property in $TreeDefinition.Properties.GetEnumerator()) {
             $TreeViewControl.($property.Key) = $property.Value
         }
 
-        # Late binding (Dynamic)
-        foreach ($handler in $TreeDefinition.Handlers.GetEnumerator()) {
-            $TreeViewControl."Add_$($handler.Key)"($handler.Value)
-        }
-
-        # Default Handlers
+        ### EVENT HANDLERS ----------------------------------------------------
+        # Defaults
         if (!$TreeDefinition.Handlers.ContainsKey('AfterCheck')) {
-            [void]$TreeViewControl.Add_AfterCheck($default.AfterCheck)
+            [void]$TreeViewControl.Add_AfterCheck($Default.AfterCheck)
         }
         if (!$TreeDefinition.Handlers.ContainsKey('Click')) {
-            [void]$TreeViewControl.Add_Click($default.Click)
+            [void]$TreeViewControl.Add_Click($Default.Click)
+        }
+
+        # Late binding (dynamic) - can override defaults
+        foreach ($handler in $TreeDefinition.Handlers.GetEnumerator()) {
+            $TreeViewControl."Add_$($handler.Key)"($handler.Value)
         }
 
         Add-Member -InputObject $TreeViewControl -MemberType NoteProperty -Name Static -Value $Static
@@ -559,24 +562,24 @@ function New-SortedTreeView {
             }
         }
 
-        [void]$Container.TabPages.Add( $SettingsTab )
+        [void]$BaseContainer.TabPages.Add( $SettingsTab )
     }
 
     # View Settings Flow Panel
-    $SettingsPanel = New-Object System.Windows.Forms.FlowLayoutPanel
+    $SettingsContainer = New-Object System.Windows.Forms.FlowLayoutPanel
     &{
-        $SettingsPanel.Dock          = [System.Windows.Forms.DockStyle]::Fill
-        $SettingsPanel.BackColor     = [System.Drawing.Color]::White
-        $SettingsPanel.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
-        $SettingsPanel.WrapContents  = $false
-        $SettingsPanel.AutoScroll    = $true
+        $SettingsContainer.Dock          = [System.Windows.Forms.DockStyle]::Fill
+        $SettingsContainer.BackColor     = [System.Drawing.Color]::White
+        $SettingsContainer.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
+        $SettingsContainer.WrapContents  = $false
+        $SettingsContainer.AutoScroll    = $true
 
         # Data Node Configuration (Apply and Undock Buttons)
         $DataNodePanel = New-Object System.Windows.Forms.Panel
         &{
             $DataNodePanel.BackColor = [System.Drawing.Color]::White
 
-            $Registration = [PSCustomObject]@{
+            $registration = [PSCustomObject]@{
                 Name = [String]::Empty
                 Setting = $DataNodePanel
             }
@@ -598,26 +601,25 @@ function New-SortedTreeView {
                 $this.Controls['DisplayFieldSelectionBox'].SelectedIndex = 0
             }
 
-            Add-Member -InputObject $DataNodePanel -MemberType NoteProperty -Name Registration -Value $Registration
+            Add-Member -InputObject $DataNodePanel -MemberType NoteProperty -Name Registration -Value $registration
 
             # Undock Navigation TreeView Button
             [void]$DataNodePanel.Controls.Add((&{
-                # UNDOCK Button
-                $Button = New-Object System.Windows.Forms.Button
-                $Button.Dock = [System.Windows.Forms.DockStyle]::Left
-                $Button.Text = "Undock"
-                $Button.Height = 21
-                $Button.Add_Click({
+                $button = New-Object System.Windows.Forms.Button
+                $button.Dock = [System.Windows.Forms.DockStyle]::Left
+                $button.Text = "Undock"
+                $button.Height = 21
+                $button.Add_Click({
                     $this.Undock()
                 })
 
-                Add-Member -InputObject $Button -MemberType NoteProperty -Name Window -Value $Window
+                Add-Member -InputObject $button -MemberType NoteProperty -Name Window -Value $Window
 
-                Add-Member -InputObject $Button -MemberType NoteProperty -Name DockPackage -Value $Container
+                Add-Member -InputObject $button -MemberType NoteProperty -Name DockPackage -Value $BaseContainer
 
-                Add-Member -InputObject $Button -MemberType NoteProperty -Name DockTarget -Value $Parent
+                Add-Member -InputObject $button -MemberType NoteProperty -Name DockTarget -Value $Parent
 
-                Add-Member -InputObject $Button -MemberType ScriptMethod -Name Undock -Value {
+                Add-Member -InputObject $button -MemberType ScriptMethod -Name Undock -Value {
                     $form = New-Object System.Windows.Forms.Form
                     $form.Text          = "Baseline Security Scan Viewer"
                     $form.Size          = New-Object System.Drawing.Size(300, 600)
@@ -661,21 +663,21 @@ function New-SortedTreeView {
                 }
 
                 # Add Button to Parent Control
-                return $Button
+                return $button
             }))
 
             # Apply Settings Button
             [void]$DataNodePanel.Controls.Add( 
             ( &{
-                $Apply = New-Object System.Windows.Forms.Button
+                $button = New-Object System.Windows.Forms.Button
 
-                $Handler = {
+                $handler = {
                     Write-Debug "Applying View Settings..."
 
                     # Data Node Label Field
-                    $DataLabel = $this.Parent.Controls['DisplayFieldSelectionBox'].SelectedValue
+                    $dataLabel = $this.Parent.Controls['DisplayFieldSelectionBox'].SelectedValue
 
-                    if ([String]::IsNullOrEmpty($DataLabel)) {
+                    if ([String]::IsNullOrEmpty($dataLabel)) {
                         [System.Windows.Forms.MessageBox]::Show(
                             "You must select a [Data Node Label] field!",
                             "Compliance View Settings",
@@ -698,57 +700,60 @@ function New-SortedTreeView {
                     #Write-Debug "Building Sort Buckets: $SortBy"
 
                     # Gather Grouping Data
-                    $GroupBy = New-Object System.Collections.ArrayList
-                    $GroupSettings = $this.SettingsContainer.Controls['GroupByOptions']
-                    for ($i = 1; $i -lt $GroupSettings.Controls.Count; $i++) {
-                        [void]$GroupBy.Add($GroupSettings.Controls[$i].Registration)
-                    }
-                    $GroupBy.TrimToSize()
+                    $groupBy = New-Object System.Collections.ArrayList
+                    $groupSettings = $this.SettingsContainer.Controls['GroupByOptions']
 
-                    Write-Debug "Building Group Buckets: $GroupBy"
+                    for ($i = 1; $i -lt $groupSettings.Controls.Count; $i++) {
+                        [void]$groupBy.Add($groupSettings.Controls[$i].Registration)
+                    }
+
+                    $groupBy.TrimToSize()
+
+                    Write-Debug "Building Group Buckets: $groupBy"
 
                     # Quick Access ArrayList for all of the data nodes
-                    $DataNodes = New-Object System.Collections.ArrayList
+                    $dataNodes = New-Object System.Collections.ArrayList
 
-                    $Constructor = & $this.Tree.Static.NewGroupConstructor $GroupBy $DataLabel $DataNodes $this.GroupDefinition $this.NodeDefinition
-                    $Constructor.AddRange($this.Tree.Source)
+                    $constructor = & $this.Tree.Static.NewGroupConstructor $groupBy $dataLabel $dataNodes $this.GroupDefinition $this.NodeDefinition
+                    $constructor.AddRange($this.Tree.Source)
 
                     $this.Tree.SuspendLayout()
                     $this.Tree.Nodes.Clear()
-                    $this.Tree.Nodes.AddRange( $Constructor.Build() )
+                    $this.Tree.Nodes.AddRange( $constructor.Build() )
                     $this.Tree.ResumeLayout()
 
                     # Append Quick Access Data Node List
-                    $this.Tree.DataNodes = $DataNodes
+                    $this.Tree.DataNodes = $dataNodes
 
                     $this.Component.SelectedIndex = 0
                 }
 
-                # TREEVIEW SETTINGS -------------------------------------------
-                Add-Member -InputObject $Apply -MemberType NoteProperty -Name SettingsContainer -Value $SettingsPanel
+                ### TREEVIEW SETTINGS -----------------------------------------
+                Add-Member -InputObject $button -MemberType NoteProperty -Name SettingsContainer -Value $SettingsContainer
 
-                # PARENT AND DATA SOURCE CONTAINERS/OBJECTS -------------------
-                Add-Member -InputObject $Apply -MemberType NoteProperty -Name Tree -Value $TreeViewControl
-                Add-Member -InputObject $Apply -MemberType NoteProperty -Name Component -Value $Container
+                ### PARENT AND DATA SOURCE CONTAINERS/OBJECTS -----------------
+                Add-Member -InputObject $button -MemberType NoteProperty -Name Tree -Value $TreeViewControl
+                Add-Member -InputObject $button -MemberType NoteProperty -Name Component -Value $BaseContainer
 
-                # TREEVIEW NODE CUSTOMIZATION DEFINITIONS ---------------------
-                Add-Member -InputObject $Apply -MemberType NoteProperty -Name GroupDefinition -Value $GroupDefinition
-                Add-Member -InputObject $Apply -MemberType NoteProperty -Name NodeDefinition -Value $NodeDefinition
+                ### TREEVIEW NODE CUSTOMIZATION DEFINITIONS -------------------
+                Add-Member -InputObject $button -MemberType NoteProperty -Name GroupDefinition -Value $GroupDefinition
+                Add-Member -InputObject $button -MemberType NoteProperty -Name NodeDefinition -Value $NodeDefinition
 
-                # REMOTE CALL HANDLE ------------------------------------------
-                Add-Member -InputObject $Apply -MemberType ScriptMethod -Name Apply -Value $Handler
+                ### REMOTE CALL HANDLE ----------------------------------------
+                Add-Member -InputObject $button -MemberType ScriptMethod -Name Apply -Value $handler
 
+                ### STATUS FLAGS ----------------------------------------------
                 # Flag for remote callers set by Apply.Handler and SettingsTab.RegisterFields
-                Add-Member -InputObject $Apply -MemberType NoteProperty -Name Valid -Value $false
-                Add-Member -InputObject $SettingsTab -MemberType NoteProperty -Name Handler -Value $Apply
+                Add-Member -InputObject $button -MemberType NoteProperty -Name Valid -Value $false
+                Add-Member -InputObject $SettingsTab -MemberType NoteProperty -Name Handler -Value $button
 
-                $Apply.Dock   = [System.Windows.Forms.DockStyle]::Left
-                $Apply.Height = 21
-                $Apply.Width  = 85
-                $Apply.Text   = "Apply Settings"
-                $Apply.Add_Click($Handler)
+                $button.Dock   = [System.Windows.Forms.DockStyle]::Left
+                $button.Height = 21
+                $button.Width  = 85
+                $button.Text   = "Apply Settings"
+                $button.Add_Click($handler)
 
-                return $Apply
+                return $button
         
                 })
             )
@@ -756,62 +761,62 @@ function New-SortedTreeView {
             # Select Data Label Combo Box
             [void]$DataNodePanel.Controls.Add(
             (&{
-                $LabelSelector = New-Object System.Windows.Forms.ComboBox
-                $LabelSelector.Name = "DisplayFieldSelectionBox"
-                $LabelSelector.Dock = [System.Windows.Forms.DockStyle]::Left
-                $LabelSelector.Width = 85
-                $LabelSelector.Add_SelectedValueChanged({
-                    $Current = $this.Parent # Settings Panel
+                $dropdown = New-Object System.Windows.Forms.ComboBox
+                $dropdown.Name = "DisplayFieldSelectionBox"
+                $dropdown.Dock = [System.Windows.Forms.DockStyle]::Left
+                $dropdown.Width = 85
+                $dropdown.Add_SelectedValueChanged({
+                    $current = $this.Parent # Settings Panel
 
                     if ($this.SelectedValue -eq [String]::Empty) {
-                        $Current.Unregister()
+                        $current.Unregister()
                         return
                     }
 
                     $registered = $this.SettingsTab.GroupFields.ToArray()
                     foreach ($field in $registered) {
-                        if (!$field.Setting.Equals($Current) -and $field.Name -eq $this.SelectedValue) {
+                        if (!$field.Setting.Equals($current) -and $field.Name -eq $this.SelectedValue) {
                             if ($field.Setting.SettingType -eq 'Group') {
                                 $field.Setting.Unregister()
                             }
                         }
                     }
         
-                    Write-Debug ("Field Registered: {0}`t{1}" -f $Current.Registration.Name, $Current.GetHashCode())
-                    $Current.Registration.Name = $this.SelectedValue
+                    Write-Debug ("Field Registered: {0}`t{1}" -f $current.Registration.Name, $current.GetHashCode())
+                    $current.Registration.Name = $this.SelectedValue
 
-                    if (!$Current.Registered) {
-                        [void]$this.SettingsTab.GroupFields.Add($Current.Registration)
-                        $Current.Registered = $true
+                    if (!$current.Registered) {
+                        [void]$this.SettingsTab.GroupFields.Add($current.Registration)
+                        $current.Registered = $true
                     }
                 })
 
-                Add-Member -InputObject $SettingsTab -MemberType NoteProperty -Name DataLabel -Value $LabelSelector
+                Add-Member -InputObject $SettingsTab -MemberType NoteProperty -Name DataLabel -Value $dropdown
 
-                Add-Member -InputObject $LabelSelector -MemberType NoteProperty -Name SettingsTab -Value $SettingsTab
+                Add-Member -InputObject $dropdown -MemberType NoteProperty -Name SettingsTab -Value $SettingsTab
 
-                return $LabelSelector
+                return $dropdown
             }) )
 
             # Panel Setting Label
             [void]$DataNodePanel.Controls.Add(
             (&{
-                $Label= New-Object System.Windows.Forms.Label
-                $Label.Dock = [System.Windows.Forms.DockStyle]::Left
-                $Label.Text = "Data Node Label:"
-                $Label.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+                $label= New-Object System.Windows.Forms.Label
+                $label.Dock = [System.Windows.Forms.DockStyle]::Left
+                $label.Text = "Data Node Label:"
+                $label.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
 
-                return $Label
+                return $label
             }) )
 
-            $TmpWidth = 0
-            foreach ($TmpItem in $DataNodePanel.Controls) {
-                $TmpWidth += $TmpItem.width
+            $width = 0
+            foreach ($ctrl in $DataNodePanel.Controls) {
+                $width += $ctrl.width
             }
-            $DataNodePanel.Width = $TmpWidth + 10
+            $DataNodePanel.Width = $width + 10
             $DataNodePanel.Height = 22
 
-            [void]$SettingsPanel.Controls.Add( $DataNodePanel )
+            [void]$SettingsContainer.Controls.Add( $DataNodePanel )
         }
 
         # Sort By Options Flow Panel
@@ -824,7 +829,7 @@ function New-SortedTreeView {
     #    $OptionsFlowPanel.AutoSize = $true
     #    $OptionsFlowPanel.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
     #
-    #    $SettingsPanel.Controls.Add( $OptionsFlowPanel )
+    #    $SettingsContainer.Controls.Add( $OptionsFlowPanel )
     #
     #    # Add Sort Level Static Panel
     #    #region
@@ -961,7 +966,7 @@ function New-SortedTreeView {
             $OptionsFlowPanel.AutoSize      = $true
             $OptionsFlowPanel.AutoSizeMode  = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
 
-            [void]$SettingsPanel.Controls.Add( $OptionsFlowPanel )
+            [void]$SettingsContainer.Controls.Add( $OptionsFlowPanel )
         }
 
         # Add Group Level Static Panel
@@ -971,26 +976,26 @@ function New-SortedTreeView {
                 
                 [void]$OptionsFlowPanel.Controls.Add( $GroupStaticPanel )
 
-            $Label = New-Object System.Windows.Forms.Label
-                $Label.Dock = [System.Windows.Forms.DockStyle]::Left
-                $Label.Text = "Group Level"
-                $Label.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+            $label = New-Object System.Windows.Forms.Label
+                $label.Dock = [System.Windows.Forms.DockStyle]::Left
+                $label.Text = "Group Level"
+                $label.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
 
-                [void]$GroupStaticPanel.Controls.Add( $Label )
+                [void]$GroupStaticPanel.Controls.Add( $label )
             
-            $GroupButton = New-Object System.Windows.Forms.Button
-                $GroupButton.Text = "Add"
-                $GroupButton.Dock = [System.Windows.Forms.DockStyle]::Left
-                $GroupButton.Height = 21
-                $GroupButton.Width  = 50
+            $groupButton = New-Object System.Windows.Forms.Button
+                $groupButton.Text = "Add"
+                $groupButton.Dock = [System.Windows.Forms.DockStyle]::Left
+                $groupButton.Height = 21
+                $groupButton.Width  = 50
                 
-                [void]$GroupStaticPanel.Controls.Add( $GroupButton )
+                [void]$GroupStaticPanel.Controls.Add( $groupButton )
 
-                Add-Member -InputObject $GroupButton -MemberType NoteProperty -Name SettingsTab -Value $SettingsTab
+                Add-Member -InputObject $groupButton -MemberType NoteProperty -Name SettingsTab -Value $SettingsTab
 
-                Add-Member -InputObject $GroupButton -MemberType NoteProperty -Name OptionsPanel -Value $OptionsFlowPanel
+                Add-Member -InputObject $groupButton -MemberType NoteProperty -Name OptionsPanel -Value $OptionsFlowPanel
 
-                [void]$GroupButton.Add_Click({
+                [void]$groupButton.Add_Click({
                     if ($this.SettingsTab.GroupFields.Count -eq $this.SettingsTab.Fields.Count -1) {
                         [System.Windows.Forms.MessageBox]::Show(
                             "Maximum number of group/sort levels reached!",
@@ -1013,58 +1018,58 @@ function New-SortedTreeView {
         
                     Write-Debug ("Avaliable Field:`r`n{0}" -f $available)
 
-                    $RemoveButton = New-Object System.Windows.Forms.Button
-                    $RemoveButton.Dock = [System.Windows.Forms.DockStyle]::Left
-                    $RemoveButton.Text = "Remove"
-                    $RemoveButton.Height = 21
-                    $RemoveButton.Width = 75
-                    [void]$RemoveButton.Add_Click({
+                    $removeButton = New-Object System.Windows.Forms.Button
+                    $removeButton.Dock = [System.Windows.Forms.DockStyle]::Left
+                    $removeButton.Text = "Remove"
+                    $removeButton.Height = 21
+                    $removeButton.Width = 75
+                    [void]$removeButton.Add_Click({
                         $this.Parent.Unregister()
                     })
 
-                    $SettingLabel = New-Object System.Windows.Forms.Label
-                    $SettingLabel.Dock = [System.Windows.Forms.DockStyle]::Left
-                    $SettingLabel.Width = 60
-                    $SettingLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-                    $SettingLabel.Text = "Group by:"
+                    $settingLabel = New-Object System.Windows.Forms.Label
+                    $settingLabel.Dock = [System.Windows.Forms.DockStyle]::Left
+                    $settingLabel.Width = 60
+                    $settingLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+                    $settingLabel.Text = "Group by:"
 
-                    $FieldSelectBox = New-Object System.Windows.Forms.ComboBox
-                    $FieldSelectBox.Dock = [System.Windows.Forms.DockStyle]::Left
-                    $FieldSelectBox.DataSource = @($this.SettingsTab.Fields)
-                    $FieldSelectBox.Width = 85
+                    $fieldSelection = New-Object System.Windows.Forms.ComboBox
+                    $fieldSelection.Dock = [System.Windows.Forms.DockStyle]::Left
+                    $fieldSelection.DataSource = @($this.SettingsTab.Fields)
+                    $fieldSelection.Width = 85
 
-                    Add-Member -InputObject $FieldSelectBox -MemberType NoteProperty -Name SettingsTab -Value $this.SettingsTab
+                    Add-Member -InputObject $fieldSelection -MemberType NoteProperty -Name SettingsTab -Value $this.SettingsTab
 
-                    $SortDirection = New-Object System.Windows.Forms.ComboBox
-                    $SortDirection.Dock = [System.Windows.Forms.DockStyle]::Left
-                    $SortDirection.DataSource = @("Ascending", "Descending")
-                    $SortDirection.Width = 80
-                    $SortDirection.Add_SelectedValueChanged({
+                    $sortDirection = New-Object System.Windows.Forms.ComboBox
+                    $sortDirection.Dock = [System.Windows.Forms.DockStyle]::Left
+                    $sortDirection.DataSource = @("Ascending", "Descending")
+                    $sortDirection.Width = 80
+                    $sortDirection.Add_SelectedValueChanged({
                         $this.Parent.Registration.SortDirection = $this.SelectedValue
                     })
 
-                    $SettingPanel = New-Object System.Windows.Forms.Panel
-                    $SettingPanel.Height = 22
-                    $SettingPanel.Width = $RemoveButton.Width + $SortDirection.Width + $SettingLabel.Width + $FieldSelectBox.Width
+                    $settingPanel = New-Object System.Windows.Forms.Panel
+                    $settingPanel.Height = 22
+                    $settingPanel.Width = $removeButton.Width + $sortDirection.Width + $settingLabel.Width + $fieldSelection.Width
 
-                    [void]$SettingPanel.Controls.Add($SortDirection)
-                    [void]$SettingPanel.Controls.Add($FieldSelectBox)
-                    [void]$SettingPanel.Controls.Add($SettingLabel)
-                    [void]$SettingPanel.Controls.Add($RemoveButton)
+                    [void]$settingPanel.Controls.Add($sortDirection)
+                    [void]$settingPanel.Controls.Add($fieldSelection)
+                    [void]$settingPanel.Controls.Add($settingLabel)
+                    [void]$settingPanel.Controls.Add($removeButton)
 
                     $registration = [PSCustomObject]@{
                         Name = $available
                         SortDirection = "Ascending"
-                        Setting = $SettingPanel
+                        Setting = $settingPanel
                     }
 
-                    Add-Member -InputObject $SettingPanel -MemberType NoteProperty -Name SettingsTab -Value $this.SettingsTab
+                    Add-Member -InputObject $settingPanel -MemberType NoteProperty -Name SettingsTab -Value $this.SettingsTab
 
-                    Add-Member -InputObject $SettingPanel -MemberType NoteProperty -Name Registration -Value $registration
+                    Add-Member -InputObject $settingPanel -MemberType NoteProperty -Name Registration -Value $registration
 
-                    Add-Member -InputObject $SettingPanel -MemberType NoteProperty -Name SettingType -Value "Group"
+                    Add-Member -InputObject $settingPanel -MemberType NoteProperty -Name SettingType -Value "Group"
 
-                    Add-Member -InputObject $SettingPanel -MemberType ScriptMethod -Name Unregister -Value {
+                    Add-Member -InputObject $settingPanel -MemberType ScriptMethod -Name Unregister -Value {
                         [void]$this.Parent.Controls.Remove($this)
                         $this.SettingsTab.GroupFields.Remove($this.Registration)
                         Write-Debug ("Unregistered: {0}`t {1}" -f $this.Registration.Name, $this.GetHashCode())
@@ -1075,35 +1080,35 @@ function New-SortedTreeView {
 
                     Write-Debug ("Field Registered: {0}`t{1}" -f $registration.Name, $registration.Setting.GetHashCode())
 
-                    [void]$this.OptionsPanel.Controls.Add($SettingPanel)
+                    [void]$this.OptionsPanel.Controls.Add($settingPanel)
         
                     # After registering the field set the combo box selected value
-                    $FieldSelectBox.SelectedItem = $available
+                    $fieldSelection.SelectedItem = $available
 
                     # Adding the event handler last to prevent issues with the initial loading of the setting panel
-                    $FieldSelectBox.Add_SelectedValueChanged({
-                        $Current = $this.Parent # Setting Panel
+                    $fieldSelection.Add_SelectedValueChanged({
+                        $current = $this.Parent # Setting Panel
 
                         $registered = $this.SettingsTab.GroupFields.ToArray()
                         foreach ($field in $registered) {
-                            if (!$field.Setting.Equals($Current) -and $field.Name -eq $this.SelectedValue) {
+                            if (!$field.Setting.Equals($current) -and $field.Name -eq $this.SelectedValue) {
                                 $field.Setting.Unregister()
                             }
                         }
 
-                        $Current.Registration.Name = $this.SelectedValue
-                        Write-Debug ("Field Registered: {0}`t{1}" -f $Current.Registration.Name, $Current.GetHashCode())
+                        $current.Registration.Name = $this.SelectedValue
+                        Write-Debug ("Field Registered: {0}`t{1}" -f $current.Registration.Name, $current.GetHashCode())
                     })
                 }) # End Button.Add_Click
         }
 
         # Add the TreeView Settings Panel
-        [void]$SettingsTab.Controls.Add( $SettingsPanel )
+        [void]$SettingsTab.Controls.Add( $SettingsContainer )
     }
 
-    Add-Member -InputObject $Container -MemberType NoteProperty -Name SettingsTab -Value $SettingsTab
+    Add-Member -InputObject $BaseContainer -MemberType NoteProperty -Name SettingsTab -Value $SettingsTab
 
-    Add-Member -InputObject $Container -MemberType NoteProperty -Name Display -Value $TreeViewControl
+    Add-Member -InputObject $BaseContainer -MemberType NoteProperty -Name Display -Value $TreeViewControl
 
-    return $Container
+    return $BaseContainer
 }
