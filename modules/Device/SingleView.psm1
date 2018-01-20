@@ -337,6 +337,14 @@ function New-ViewControl {
         Add-Member -InputObject $View -MemberType NoteProperty -Name FieldList -Value (New-Object System.Collections.ArrayList)
         
 
+    # Device Data Layout Panel
+    $DataView = New-DataLayout
+
+        [void]$View.Panel2.Controls.Add( $DataView )
+        $DataNodeDefinition.NoteProperties.DataView = $DataView
+
+        Add-Member -InputObject $View -MemberType NoteProperty -Name Display -Value $DataView
+
     # Device Navigation Panel
         # SortedTreeView component created by intialize function (dependecy on runtime object references)
     $TreeView = Initialize-TreeComponents     `
@@ -352,13 +360,7 @@ function New-ViewControl {
 
         Add-Member -InputObject $View -MemberType NoteProperty -Name Tree -Value $TreeView
 
-    # Device Data Layout Panel
-    $DataView = New-DataLayout
-
-        [void]$View.Panel2.Controls.Add( $DataView )
-        $DataNodeDefinition.Custom.DataView = $DataView
-
-        Add-Member -InputObject $View -MemberType NoteProperty -Name Display -Value $DataView
+    [void]$view.Panel1.Controls.Add($TreeView)
 
     return $View
 }
