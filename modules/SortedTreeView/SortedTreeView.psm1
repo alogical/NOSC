@@ -72,13 +72,13 @@ function Initialize-Components {
 
     ### Child Controls --------------------------------------------------------
     $TreeViewTab = New-TreeViewTab $Source $ImageList $Static $Default $TreeDefinition
-    $Container.Controls.Add($TreeView)
+    $Container.Controls.Add($TreeViewTab)
 
     # Settings Tab Parameter Sets
     $DockSettings = [PSCustomObject]@{
-        Window  = $Window
+        Window    = $Window
         Component = $Container
-        Target  = $Parent
+        Target    = $Parent
     }
 
     $TreeSettings = [PSCustomObject]@{
@@ -480,12 +480,14 @@ function New-TreeViewTab {
     $TreeView.CheckBoxes = $true
     $TreeView.ImageList  = $ImageList
 
+    [void]$Container.Controls.Add($TreeView)
+
     ### ARCHITECTURE PROPERTIES -----------------------------------------------
-    Add-Member -InputObject $TreeViewControl -MemberType NoteProperty -Name Static -Value $Static
+    Add-Member -InputObject $TreeView -MemberType NoteProperty -Name Static -Value $Static
 
-    Add-Member -InputObject $TreeViewControl -MemberType NoteProperty -Name Source -Value $Source
+    Add-Member -InputObject $TreeView -MemberType NoteProperty -Name Source -Value $Source
 
-    Add-Member -InputObject $TreeViewControl -MemberType NoteProperty -Name DataNodes -Value $null
+    Add-Member -InputObject $TreeView -MemberType NoteProperty -Name DataNodes -Value $null
 
     ### BUILT-IN PROPERTIES ---------------------------------------------------
     # Late binding (dynamic)
@@ -503,16 +505,16 @@ function New-TreeViewTab {
     # Custom - can override defaults
     # Late binding (dynamic)
     foreach ($handler in $TreeDefinition.Handlers.GetEnumerator()) {
-        $TreeViewControl."Add_$($handler.Key)"($handler.Value)
+        $TreeView."Add_$($handler.Key)"($handler.Value)
     }
 
     ### CUSTOM METHODS --------------------------------------------------------
     foreach ($method in $TreeDefinition.Methods.GetEnumerator()) {
-        Add-Member -InputObject $TreeViewcontrol -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+        Add-Member -InputObject $TreeView -MemberType ScriptMethod -Name $method.Key -Value $method.Value
     }
 
     ### Return Component Control ----------------------------------------------
-    return $TreeView
+    return $Container
 }
 
 function New-SettingsTab {
