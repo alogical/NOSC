@@ -932,7 +932,7 @@ function New-GroupStaticPanel {
 
     ### Add Group Button ------------------------------------------------------
     $ButtonParams = @{
-        Fields            = $TreeSettings.Fields
+        FieldNames        = $TreeSettings.Fields
         SettingCollection = $TreeSettings.GroupBy
         OptionsPanel      = $OptionsPanel
         Type              = "Group"
@@ -973,7 +973,7 @@ function New-SortStaticPanel {
 
     ### Add Group Button ------------------------------------------------------
     $ButtonParams = @{
-        Fields            = $TreeSettings.Fields
+        FieldNames        = $TreeSettings.Fields
         SettingCollection = $TreeSettings.SortBy
         OptionsPanel      = $OptionsPanel
         Type              = "Sort"
@@ -992,11 +992,14 @@ function New-SettingStaticButton {
     param(
         # The list of available data fields.
         [Parameter(Mandatory = $true)]
+        [AllowNull()]
+        [AllowEmptyCollection()]
             [System.Collections.ArrayList]
             $FieldNames,
 
         # The collection of fields already registered for grouping data by.
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
             [System.Collections.ArrayList]
             $SettingCollection,
 
