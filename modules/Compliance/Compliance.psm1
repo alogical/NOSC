@@ -49,11 +49,14 @@ function Initialize-Components {
          -Parent          $Split.Panel1        `
          -MenuStrip       $null                `
          -OnLoad          $OnLoad              `
+         -Title           'Explorer'           `
          -Source          $BaseContainer.Data  `
          -ImageList       $ImageList           `
          -TreeDefinition  $TreeViewDefinition  `
          -GroupDefinition $GroupNodeDefinition `
          -NodeDefinition  $DataNodeDefinition
+
+    [Void]$Split.Panel1.Controls.Add($Tree)
 
     # Attach reference to the navigation tree object for easy access by child components
     Add-Member -InputObject $BaseContainer -MemberType NoteProperty -Name Tree -Value $Tree

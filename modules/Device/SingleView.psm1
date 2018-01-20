@@ -352,6 +352,7 @@ function New-ViewControl {
         -Parent          $View.Panel1         `
         -MenuStrip       $null                `
         -OnLoad          $OnLoad              `
+        -Title           'Device Explorer'    `
         -Source          $Container.Data      `
         -ImageList       $ImageList           `
         -TreeDefinition  $TreeViewDefinition  `

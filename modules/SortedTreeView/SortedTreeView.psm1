@@ -45,6 +45,10 @@ function Initialize-Components {
             [System.Collections.ArrayList]
             $OnLoad,
 
+        [Parameter(Mandatory = $false)]
+            [String]
+            $Title = "TreeView",
+
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
             [System.Collections.ArrayList]
@@ -70,8 +74,17 @@ function Initialize-Components {
     $Container = New-Object System.Windows.Forms.TabControl
     $Container.Dock = [System.Windows.Forms.DockStyle]::Fill
 
-    ### Child Controls --------------------------------------------------------
-    $TreeViewTab = New-TreeViewTab $Source $ImageList $Static $Default $TreeDefinition
+    ### TreeView Container ----------------------------------------------------
+    $TreeParams = @{
+        Source         = $Source
+        Title          = $Title
+        ImageList      = $ImageList
+        Static         = $Static
+        DefaultHandler = $Default
+        Definition     = $TreeDefinition
+    }
+    $TreeViewTab = New-TreeViewTab @TreeParams
+
     $Container.Controls.Add($TreeViewTab)
 
     # Settings Tab Parameter Sets
@@ -442,6 +455,11 @@ $Default.Click = {
 
 function New-TreeViewTab {
     param(
+        # Title of the TreeView tab.
+        [Parameter(Mandatory = $true)]
+            [String]
+            $Title,
+
         # TreeView data source used to create the TreeNodes.
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
@@ -466,12 +484,13 @@ function New-TreeViewTab {
         # Object containing the property overrides, event handlers, and custom properties/methods for the TreeView layout container.
         [Parameter(Mandatory = $false)]
             [PSCustomObject]
-            $TreeDefinition
+            $Definition
     )
 
     $Container = New-Object System.Windows.Forms.TabPage
     $Container.Dock = [System.Windows.Forms.DockStyle]::Fill
     $Container.Name = "TreeVeiwTab"
+    $Container.Text = $Title
 
     $TreeView = New-Object System.Windows.Forms.TreeView
     $TreeView.Name = "TreeView"
@@ -491,7 +510,7 @@ function New-TreeViewTab {
 
     ### BUILT-IN PROPERTIES ---------------------------------------------------
     # Late binding (dynamic)
-    foreach ($property in $TreeDefinition.Properties.GetEnumerator()) {
+    foreach ($property in $Definition.Properties.GetEnumerator()) {
         $TreeView.($property.Key) = $property.Value
     }
 
@@ -504,12 +523,12 @@ function New-TreeViewTab {
 
     # Custom - can override defaults
     # Late binding (dynamic)
-    foreach ($handler in $TreeDefinition.Handlers.GetEnumerator()) {
+    foreach ($handler in $Definition.Handlers.GetEnumerator()) {
         $TreeView."Add_$($handler.Key)"($handler.Value)
     }
 
     ### CUSTOM METHODS --------------------------------------------------------
-    foreach ($method in $TreeDefinition.Methods.GetEnumerator()) {
+    foreach ($method in $Definition.Methods.GetEnumerator()) {
         Add-Member -InputObject $TreeView -MemberType ScriptMethod -Name $method.Key -Value $method.Value
     }
 
