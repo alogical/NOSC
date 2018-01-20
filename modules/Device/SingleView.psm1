@@ -178,8 +178,8 @@ $Menu.File.Open = New-Object System.Windows.Forms.ToolStripMenuItem("Open", $nul
     }
 })
 $Menu.File.Open.Name = 'Open'
-Add-Member -InputObject $Menu.Open -MemberType NoteProperty -Name Component -Value $null
-Add-Member -InputObject $Menu.Open -MemberType NoteProperty -Name View -Value $null
+Add-Member -InputObject $Menu.File.Open -MemberType NoteProperty -Name Component -Value $null
+Add-Member -InputObject $Menu.File.Open -MemberType NoteProperty -Name View -Value $null
 
 $Menu.File.Root = New-Object System.Windows.Forms.ToolStripMenuItem("File", $null, @($Menu.File.SaveAs.Root, $Menu.File.Open))
 $Menu.File.Root.Name = 'File'
