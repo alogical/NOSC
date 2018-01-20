@@ -75,7 +75,7 @@ function Initialize-Components {
     $Container.Controls.Add($TreeViewTab)
 
     # Settings Tab Parameter Sets
-    $DockSettings = [PSCustomObject]@{
+    $DockSettings = @{
         Window    = $Window
         Component = $Container
         Target    = $Parent
@@ -524,7 +524,7 @@ function New-SettingsTab {
             $TreeSettings,
 
         [Parameter(Mandatory = $true)]
-            [PSCustomObject]
+            [Hashtable]
             $DockSettings
     )
 
@@ -593,7 +593,7 @@ function New-SettingsContainer {
             $TreeSettings,
 
         [Parameter(Mandatory = $true)]
-            [PSCustomObject]
+            [Hashtable]
             $DockSettings
     )
     $SettingsContainer = New-Object System.Windows.Forms.FlowLayoutPanel
@@ -658,7 +658,7 @@ function New-DataStaticPanel {
 
         # The settings for the Dock/Undock button.
         [Parameter(Mandatory = $true)]
-            [PSCustomObject]
+            [Hashtable]
             $DockSettings
     )
 
@@ -745,12 +745,12 @@ function New-DataStaticPanel {
     [void]$DataNodePanel.Controls.Add($FieldSelector)
 
     ### Panel Label -----------------------------------------------------------
-    $label = New-Object System.Windows.Forms.Label
-    $label= New-Object System.Windows.Forms.Label
-    $label.Dock = [System.Windows.Forms.DockStyle]::Left
-    $label.Text = "Data Node Label:"
-    $label.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-    [void]$DataNodePanel.Controls.Add($label)
+    $Label = New-Object System.Windows.Forms.Label
+    $Label= New-Object System.Windows.Forms.Label
+    $Label.Dock = [System.Windows.Forms.DockStyle]::Left
+    $Label.Text = "Data Node Label:"
+    $Label.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
+    [void]$DataNodePanel.Controls.Add($Label)
 
     ### Resize Panel ----------------------------------------------------------
     $width = 0
