@@ -99,7 +99,7 @@ Export-ModuleMember -Function *
 ## explicit call to Export-ModuleMember
 ###############################################################################
 ###############################################################################
-Import-Module "$ModuleInvocationPath\..\SortedTreeView\SortedTreeView.psm1" -Prefix Tree
+Import-Module "$ModuleInvocationPath\..\SortedTreeView\SortedTreeView.psm1" -Prefix Nav
 
 $ImagePath = "$ModuleInvocationPath\..\..\resources"
 $BinPath   = "$ModuleInvocationPath\..\..\bin"
@@ -222,8 +222,8 @@ function Load-DeviceList {
 
     $Data = Import-Csv $Path
 
-    if ($View.Tree.Display.Nodes.Count -gt 0) {
-        $View.Tree.Display.Nodes.Clear()
+    if ($View.NavPanel.TreeView.Nodes.Count -gt 0) {
+        $View.NavPanel.TreeView.Nodes.Clear()
     }
 
     if ($Data.Count -gt 0) {
@@ -287,7 +287,6 @@ function Load-DeviceList {
             [Void]$toggle.Items.Add($item)
         }
         
-
         # Add state fields
         foreach ($record in $data) {
             Add-Member -InputObject $record -MemberType NoteProperty -Name Dirty -Value $false
@@ -298,14 +297,14 @@ function Load-DeviceList {
         [Void]$Component.Data.AddRange($Data)
 
         # Set TreeView Object Data Source Fields
-        $View.Tree.SettingsTab.RegisterFields($FieldNames)
+        $View.NavPanel.Settings.RegisterFields($FieldNames)
     }
 
-    if ($View.Tree.SettingsTab.Handler.Valid) {
-        $View.Tree.SettingsTab.Handler.Apply()
+    if ($View.NavPanel.Settings.Valid) {
+        $View.NavPanel.Settings.Apply()
     }
     else {
-        $View.Tree.SettingsTab.PromptUser()
+        $View.NavPanel.Settings.PromptUser()
     }
 }
 
@@ -347,7 +346,7 @@ function New-ViewControl {
 
     # Device Navigation Panel
         # SortedTreeView component created by intialize function (dependecy on runtime object references)
-    $TreeView = Initialize-TreeComponents     `
+    $NavControl = Initialize-NavComponents    `
         -Window          $Window              `
         -Parent          $View.Panel1         `
         -MenuStrip       $null                `
@@ -359,9 +358,9 @@ function New-ViewControl {
         -GroupDefinition $GroupNodeDefinition `
         -NodeDefinition  $DataNodeDefinition
 
-        Add-Member -InputObject $View -MemberType NoteProperty -Name Tree -Value $TreeView
+        Add-Member -InputObject $View -MemberType NoteProperty -Name NavPanel -Value $NavControl
 
-    [void]$view.Panel1.Controls.Add($TreeView)
+    [void]$view.Panel1.Controls.Add($NavControl)
 
     return $View
 }
