@@ -713,7 +713,7 @@ function New-DataStaticPanel {
     Add-Member -InputObject $FieldSelector -MemberType NoteProperty -Name Settings -Value $TreeSettings
 
     # Data Node Label Registration Handler
-    $FieldSelector.Add_SelectedValueChanged = {
+    $FieldSelector.Add_SelectedValueChanged({
         $current = $this.Parent # Settings Panel
 
         if ($this.SelectedValue -eq [String]::Empty) {
@@ -737,7 +737,7 @@ function New-DataStaticPanel {
             [void]$this.Settings.GroupBy.Add($current.Registration)
             $current.Registered = $true
         }
-    }
+    })
 
     # Set leaf data node label field selector reference for use by other controls
     $TreeSettings.LeafSelector = $FieldSelector
