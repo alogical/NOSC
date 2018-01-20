@@ -622,7 +622,7 @@ function New-SettingsContainer {
     [void]$SettingsContainer.Controls.Add($SortOptionsPanel)
 
     # Sort By Options Static Panel --------------------------------------------
-    $SortPanel = New-SortStaticPanel $TreeSettings $OptionsFlowPanel
+    $SortPanel = New-SortStaticPanel $TreeSettings $SortOptionsPanel
 
     [void]$SortOptionsPanel.Controls.Add($SortPanel)
 
@@ -639,7 +639,7 @@ function New-SettingsContainer {
     [void]$SettingsContainer.Controls.Add($GroupOptionsPanel)
 
     # Group By Options Static Panel -------------------------------------------
-    $GroupPanel = New-GroupStaticPanel $TreeSettings $OptionsFlowPanel
+    $GroupPanel = New-GroupStaticPanel $TreeSettings $GroupOptionsPanel
 
     [void]$GroupOptionsPanel.Controls.Add($GroupPanel)
 
