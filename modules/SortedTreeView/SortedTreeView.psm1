@@ -802,6 +802,10 @@ function New-UndockButton {
     )
 
     $Button = New-Object System.Windows.Forms.Button
+    $Button.Name = "UndockButton"
+    $Button.Text = "Undock"
+
+    $Button.Dock = [System.Windows.Forms.DockStyle]::Left
 
     Add-Member -InputObject $Button -MemberType NoteProperty -Name Window -Value $Window
 
@@ -871,6 +875,10 @@ function New-ApplyButton {
     )
 
     $Button = New-Object System.Windows.Forms.Button
+    $Button.Name = "ApplySettingsButton"
+    $Button.Text = "Apply"
+
+    $Button.Dock = [System.Windows.Forms.DockStyle]::Left
 
     Add-Member -InputObject $Button -MemberType NoteProperty -Name Settings -Value $TreeSettings
     Add-Member -InputObject $Button -MemberType NoteProperty -Name Component -Value $Component
