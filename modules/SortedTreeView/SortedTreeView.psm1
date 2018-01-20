@@ -937,7 +937,7 @@ function New-GroupStaticPanel {
         OptionsPanel      = $OptionsPanel
         Type              = "Group"
     }
-    $Button = New-AddGroupButton @ButtonParams
+    $Button = New-SettingStaticButton @ButtonParams
 
     [void]$Panel.Controls.Add($Button)
 
