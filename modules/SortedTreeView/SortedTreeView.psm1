@@ -82,7 +82,7 @@ function Initialize-Components {
     }
 
     $TreeSettings = [PSCustomObject]@{
-        TreeView        = $TreeViewTab.Controls("TreeView")
+        TreeView        = $TreeViewTab.Controls["TreeView"]
         GroupDefinition = $GroupDefinition
         NodeDefinition  = $NodeDefinition
         Fields          = $null
@@ -475,7 +475,7 @@ function New-TreeViewTab {
 
     $TreeView = New-Object System.Windows.Forms.TreeView
     $TreeView.Name = "TreeView"
-    $TreeView.Dock       = [System.Windows.Forms.DockStyle]::Fill
+    $TreeView.Dock = [System.Windows.Forms.DockStyle]::Fill
 
     $TreeView.CheckBoxes = $true
     $TreeView.ImageList  = $ImageList
