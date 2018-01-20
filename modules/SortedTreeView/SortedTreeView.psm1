@@ -71,7 +71,7 @@ function Initialize-Components {
     $Container.Dock = [System.Windows.Forms.DockStyle]::Fill
 
     ### Child Controls --------------------------------------------------------
-    $TreeViewTab = New-TreeViewTab $Source $ImageList $Static $DefaultHandler $TreeDefinition
+    $TreeViewTab = New-TreeViewTab $Source $ImageList $Static $Default $TreeDefinition
     $Container.Controls.Add($TreeView)
 
     # Settings Tab Parameter Sets
