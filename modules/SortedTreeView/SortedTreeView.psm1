@@ -515,55 +515,32 @@ $Static.NewConstructor = {
         $sort = & $Static.NewFinalSortBucket $SortBy[0]
     }
 
-    $factories = New-Object System.Collections.ArrayList
+    # Final grouping level
+    $factory = & $Static.NewDataBucketFactory $DataLabel $Buffer $NodeDefinition $sort
 
-    # Build Initial Grouping Level Buckets
-    if ($GroupBy.Count -gt 0) {
+    if ($GroupBy.Count -gt 1) {
         $max = $GroupBy.Count - 1
 
-        for ($i = 0; $i -le $max; $i++) {
-                
-            # MUST ONLY BE ONE TOP BUCKET /ROOT/
-            if ($i -eq 0) {
-                $root = & $Static.NewGroupBucket $GroupBy[$i] $null $GroupDefinition
-            }
-            else {
-                [void] $factories.Add( (& $Static.NewGroupFactory $GroupBy[$i] $null $GroupDefinition) )
-            }
+        # Intermediate bucket factories
+        for ($i = $max; $i -ge 1; $i--) {
+            $factory = & $Static.NewGroupFactory $GroupBy[$i] $factory $GroupDefinition
         }
 
-        # Factory Linking - Back Reference Factories
-        $max = $factories.Count - 1
-        for ($i = 1; $i -le $max; $i++) {
-            $factories[$i - 1].Next = $factories[$i]
-        }
+        # Root level group bucket
+        $factory = & $Static.NewGroupBucket $GroupBy[$i] $factory $GroupDefinition
     }
-
-    # Handle View Settings with no Grouping Levels Defined
-    else {
-        Write-Debug "No Grouping Defined, Top Bucket is the Data Bucket"
-        $root = & $Static.NewDataBucket $DataLabel $Buffer $NodeDefinition $sort
-    }
-            
-    # Handle Back References for Multiple Grouping Level Factories
-    if ($GroupBy.Count -gt 1) {
-        Write-Debug ("Data Bucket Factory Assigned to [{0}] Factory" -f $factories[$max].Rule.Name)
-        $factories[$max].Next = & $Static.NewDataBucketFactory $DataLabel $Buffer $NodeDefinition $sort
-
-        # Top Bucket gets the next level bucket factory
-        $root.Factory = $factories[0]
-    }
-
-    # Handle Single Grouping Level
     elseif ($GroupBy.Count -eq 1) {
-        # If there is only one grouping level then root gets data buckets
-        $root.Factory = & $Static.NewDataBucketFactory $DataLabel $Buffer $NodeDefinition $sort
+        # Root level group bucket
+        $factory = & $Static.NewGroupBucket $GroupBy[0] $factory $GroupDefinition
+    }
+    else {
+        # No grouping level; generate a data bucket as the root factory
+        $factory = $factory.New()
     }
 
     # Build the Constructor Object
     $constructor = [PSCustomObject]@{
-        FactoryList = $factories
-        Tree        = $root
+        Tree = $factory
     }
 
     Add-Member -InputObject $constructor -MemberType ScriptMethod -Name AddRange -Value {
