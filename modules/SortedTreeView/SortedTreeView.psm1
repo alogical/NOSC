@@ -164,8 +164,147 @@ $Static.TreeNodeChecked = {
         $child.SetChecked($State)
     }
 }
+
+# Object Sorting
+$Static.NewSortBucket = {
+    param($Rule, $Factory)
+
+    Write-Debug ("Creating Sort [{0}] Bucket" -f $Rule.Name)
+
+    $bucket = [PSCustomObject]@{
+        Rule    = $Rule
+        Factory = $Factory
+        Content = @{}
+    }
+
+    Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Add -Value {
+        param($Record)
+
+        $value = $Record.($this.Rule.Name)
+
+        if (!$this.Content.ContainsKey($value)) {
+
+            Write-Debug "Creating Sort Bucket For ($value)"
+
+            [void]$this.Content.Add($value, $this.Factory.New())
+        }
+
+        [void]$this.Content[$value].Add($Record)
+    }
+
+    Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Sort -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [AllowEmptyCollection()]
+                [System.Collections.ArrayList]
+                $Records
+        )
+
+        if ($Records.Count -eq 0) {
+            return
+        }
+
+        foreach ($record in $Records) {
+            [void]$this.Add($record)
+        }
+
+        return $this.Finish()
+    }
+
+    Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Finish -Value {
+
+        # Sort Buckets
+        if ($this.Rule.SortDirection -eq 'Ascending') {
+            $sorted = $this.Content.GetEnumerator() | Sort-Object -Property Key
+        }
+        else {
+            $sorted = $this.Content.GetEnumerator() | Sort-Object -Property Key -Descending
+        }
+
+        ForEach ($pair in $sorted) {
+            Write-Output $pair.Value.Finish()
+        }
+
+        # Reset the sorting buckets
+        $this.Content = @{}
+    }
+
+    return $bucket
+}
+$static.NewFinalSortBucket = {
+    param($Rule)
+
+    Write-Debug ("Creating Sort [{0}] Bucket" -f $Rule.Name)
+
+    $bucket = [PSCustomObject]@{
+        Rule    = $Rule
+        Content = New-Object System.Collections.ArrayList
+    }
+
+    Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Add -Value {
+        param($Record)
+
+        [void]$this.Content.Add($Record)
+    }
+
+    Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Sort -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [AllowEmptyCollection()]
+                [System.Collections.ArrayList]
+                $Records
+        )
+
+        if ($Records.Count -eq 0) {
+            return
+        }
+
+        $this.Content = $Records
+
+        return $this.Finish()
+    }
+
+    Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Finish -Value {
+
+        # Sort Records
+        if ($this.Rule.SortDirection -eq 'Ascending') {
+            $sorted = $this.Content.ToArray() | Sort-Object -Property $Rule.Name
+        }
+        else {
+            $sorted = $this.Content.ToArray() | Sort-Object -Property $Rule.Name -Descending
+        }
+
+        return $sorted
+    }
+
+    return $bucket
+}
+$Static.NewSortBucketFactory = {
+    param($Rule, $Next, [Bool]$Final)
+
+    Write-Debug ("Factory Sort [{0}] Bucket" -f $Rule.Name)
+
+    $factory = [PSCustomObject]@{
+        Rule  = $Rule
+        Next  = $Next
+        Final = $Final
+    }
+
+    Add-Member -InputObject $factory -MemberType ScriptMethod -Name New -Value {
+        if ($this.Final) {
+            return (& $Static.NewFinalSortBucket $this.Rule)
+        }
+        else {
+            return (& $Static.NewSortBucket $this.Rule $this.Next)
+        }
+    }
+
+    return $factory
+}
+
+# Object Grouping
 $Static.NewDataBucket = {
-    param($Field, [System.Collections.ArrayList]$Buffer, [Object]$Definition)
+    param($Field, [System.Collections.ArrayList]$Buffer, [Object]$Definition, [Object]$Sorter)
 
     Write-Debug "Creating new data bucket"
 
@@ -174,6 +313,7 @@ $Static.NewDataBucket = {
         Content    = New-Object System.Collections.ArrayList
         Buffer     = $Buffer
         Definition = $Definition
+        Sorter     = $Sorter
     }
 
     Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Add -Value {
@@ -182,8 +322,17 @@ $Static.NewDataBucket = {
     }
 
     Add-Member -InputObject $bucket -MemberType ScriptMethod -Name Build -Value {
+
+        # Sort Records if Applicable
+        if ($this.Sorter) {
+            $build = $this.Sorter.Sort($this.Content)
+        }
+        else {
+            $build = $this.Content.ToArray()
+        }
+
         # Process Node Definition for Each Data Record
-        ForEach ($record in $this.Content) {
+        ForEach ($record in $build) {
             $node = New-Object System.Windows.Forms.TreeNode($record.($this.Field))
             $node.Tag = $record
 
@@ -220,7 +369,7 @@ $Static.NewDataBucket = {
     return $bucket
 }
 $Static.NewDataBucketFactory = {
-    param($DataLabel, [System.Collections.ArrayList]$Buffer, [Object]$Definition)
+    param($DataLabel, [System.Collections.ArrayList]$Buffer, [Object]$Definition, [Object]$Sorter)
 
     Write-Debug "Creating a new data bucket factory"
 
@@ -228,11 +377,12 @@ $Static.NewDataBucketFactory = {
         DataLabel  = $DataLabel
         Buffer     = $Buffer
         Definition = $Definition
+        Sorter     = $Sorter
     }
 
     Add-Member -InputObject $factory -MemberType ScriptMethod -Name New -Value {
         Write-Debug "Calling New Data Bucket"
-        return & $Static.NewDataBucket $this.DataLabel $this.Buffer $this.Definition
+        return & $Static.NewDataBucket $this.DataLabel $this.Buffer $this.Definition $this.Sorter
     }
 
     return $factory
@@ -300,7 +450,6 @@ $Static.NewGroupFactory = {
 
     Write-Debug ("Creating new bucket factory [{0}]" -f $Rule.Name)
 
-
     $factory = [PSCustomObject]@{
         Rule = $Rule
         Next = $Next
@@ -316,12 +465,18 @@ $Static.NewGroupFactory = {
 $Static.NewConstructor = {
     param(
         [Parameter(Mandatory = $true)]
+            [String]
+            $DataLabel,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
             [System.Collections.ArrayList]
             $GroupBy,
 
         [Parameter(Mandatory = $true)]
-            [String]
-            $DataLabel,
+        [AllowEmptyCollection()]
+            [System.Collections.ArrayList]
+            $SortBy,
 
         [Parameter(Mandatory = $true)]
         [AllowEmptyCollection()]
@@ -339,6 +494,26 @@ $Static.NewConstructor = {
 
     Write-Debug ("Creating new TreeView Group Constructor {0}" -f ($GroupBy | Select-Object -Property Name | Out-String))
     Write-Debug "Data Labels Using field [$DataLabel]"
+
+    $sort = $null
+
+    if ($SortBy.Count -gt 1) {
+        $max = $SortBy.Count - 1
+
+        # Final sorting level
+        $sort = & $Static.NewSortBucketFactory $SortBy[$max] $null $true
+
+        # Intermediate bucket factories
+        for ($i = $max - 1; $i -ge 1; $i--) {
+            $sort = & $Static.NewSortBucketFactory $SortBy[$i] $sort $false
+        }
+
+        # Root level sort bucket
+        $sort = & $Static.NewSortBucket $SortBy[$i] $sort
+    }
+    elseif ($SortBy.Count -eq 1) {
+        $sort = & $Static.NewFinalSortBucket $SortBy[0]
+    }
 
     $factories = New-Object System.Collections.ArrayList
 
@@ -367,13 +542,13 @@ $Static.NewConstructor = {
     # Handle View Settings with no Grouping Levels Defined
     else {
         Write-Debug "No Grouping Defined, Top Bucket is the Data Bucket"
-        $root = & $Static.NewDataBucket $DataLabel $Buffer $NodeDefinition
+        $root = & $Static.NewDataBucket $DataLabel $Buffer $NodeDefinition $sort
     }
             
     # Handle Back References for Multiple Grouping Level Factories
     if ($GroupBy.Count -gt 1) {
         Write-Debug ("Data Bucket Factory Assigned to [{0}] Factory" -f $factories[$max].Rule.Name)
-        $factories[$max].Next = & $Static.NewDataBucketFactory $DataLabel $Buffer $NodeDefinition
+        $factories[$max].Next = & $Static.NewDataBucketFactory $DataLabel $Buffer $NodeDefinition $sort
 
         # Top Bucket gets the next level bucket factory
         $root.Factory = $factories[0]
@@ -382,7 +557,7 @@ $Static.NewConstructor = {
     # Handle Single Grouping Level
     elseif ($GroupBy.Count -eq 1) {
         # If there is only one grouping level then root gets data buckets
-        $root.Factory = & $Static.NewDataBucketFactory $DataLabel $Buffer $NodeDefinition
+        $root.Factory = & $Static.NewDataBucketFactory $DataLabel $Buffer $NodeDefinition $sort
     }
 
     # Build the Constructor Object
@@ -1188,9 +1363,9 @@ function New-SettingsManager {
         Write-Debug "Applying View Settings..."
 
         # Data Node Label Field
-        $field = $this.LeafSelector.SelectedValue
+        $DataLabel = $this.LeafSelector.SelectedValue
 
-        if ([String]::IsNullOrEmpty($field)) {
+        if ([String]::IsNullOrEmpty($DataLabel)) {
             [System.Windows.Forms.MessageBox]::Show(
                 "You must select a [Data Node Label] field!",
                 "Compliance View Settings",
@@ -1211,9 +1386,9 @@ function New-SettingsManager {
         Write-Debug "Building Group Buckets: $($this.GroupBy)"
 
         # Quick Access ArrayList for all of the data nodes
-        $nodes = New-Object System.Collections.ArrayList
+        $DataNodes = New-Object System.Collections.ArrayList
 
-        $constructor = & $this.TreeView.Static.NewConstructor $GroupFields $field $nodes $this.GroupDefinition $this.NodeDefinition
+        $constructor = & $this.TreeView.Static.NewConstructor $DataLabel $GroupFields $this.SortBy $DataNodes $this.GroupDefinition $this.NodeDefinition
         $constructor.AddRange($this.TreeView.Source)
 
         $this.TreeView.SuspendLayout()
@@ -1222,7 +1397,7 @@ function New-SettingsManager {
         $this.TreeView.ResumeLayout()
 
         # Append Quick Access Data Node List
-        $this.TreeView.DataNodes = $nodes
+        $this.TreeView.DataNodes = $DataNodes
 
         $this.Component.SelectedIndex = 0
     }
