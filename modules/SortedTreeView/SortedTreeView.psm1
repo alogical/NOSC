@@ -324,6 +324,7 @@ $Static.NewConstructor = {
             $DataLabel,
 
         [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
             [System.Collections.ArrayList]
             $Buffer,
 
