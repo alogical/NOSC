@@ -56,7 +56,7 @@ function Initialize-Components {
          -GroupDefinition $GroupNodeDefinition `
          -NodeDefinition  $DataNodeDefinition
 
-    [Void]$Split.Panel1.Controls.Add($Tree)
+    [Void]$Split.Panel1.Controls.Add($Explorer)
 
     # Attach reference to the navigation tree object for easy access by child components
     Add-Member -InputObject $BaseContainer -MemberType NoteProperty -Name Explorer -Value $Explorer
