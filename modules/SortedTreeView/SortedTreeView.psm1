@@ -1049,13 +1049,13 @@ function New-SettingPanel {
         Setting       = $Panel
     }
 
-    Add-Member -InputObject $settingPanel -MemberType NoteProperty -Name SettingCollection -Value $SettingCollection
+    Add-Member -InputObject $Panel -MemberType NoteProperty -Name SettingCollection -Value $SettingCollection
 
-    Add-Member -InputObject $settingPanel -MemberType NoteProperty -Name Registration -Value $registration
+    Add-Member -InputObject $Panel -MemberType NoteProperty -Name Registration -Value $registration
 
-    Add-Member -InputObject $settingPanel -MemberType NoteProperty -Name SettingType -Value $Type
+    Add-Member -InputObject $Panel -MemberType NoteProperty -Name SettingType -Value $Type
 
-    Add-Member -InputObject $settingPanel -MemberType ScriptMethod -Name Unregister -Value {
+    Add-Member -InputObject $Panel -MemberType ScriptMethod -Name Unregister -Value {
         [void]$this.Parent.Controls.Remove($this)
         $this.SettingCollection.Remove($this.Registration)
         Write-Debug ("Unregistered: {0}`t {1}" -f $this.Registration.Name, $this.GetHashCode())
