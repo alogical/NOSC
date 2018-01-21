@@ -268,10 +268,10 @@ $static.NewFinalSortBucket = {
 
         # Sort Records
         if ($this.Rule.SortDirection -eq 'Ascending') {
-            $sorted = $this.Content.ToArray() | Sort-Object -Property $Rule.Name
+            $sorted = $this.Content.ToArray() | Sort-Object -Property $this.Rule.Name
         }
         else {
-            $sorted = $this.Content.ToArray() | Sort-Object -Property $Rule.Name -Descending
+            $sorted = $this.Content.ToArray() | Sort-Object -Property $this.Rule.Name -Descending
         }
 
         return $sorted
