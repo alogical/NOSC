@@ -1203,12 +1203,17 @@ function New-SettingsManager {
         $this.Valid = $true
         $this.GroupBy.TrimToSize()
 
+        # Filter the LeafSelector registration from the group fields
+        $GroupFields = New-Object System.Collections.ArrayList
+        $GroupFields.AddRange($this.GroupBy)
+        $GroupFields.Remove($this.LeafSelector.Parent.Registration)
+
         Write-Debug "Building Group Buckets: $($this.GroupBy)"
 
         # Quick Access ArrayList for all of the data nodes
         $nodes = New-Object System.Collections.ArrayList
 
-        $constructor = & $this.TreeView.Static.NewConstructor $this.GroupBy $field $nodes $this.GroupDefinition $this.NodeDefinition
+        $constructor = & $this.TreeView.Static.NewConstructor $GroupFields $field $nodes $this.GroupDefinition $this.NodeDefinition
         $constructor.AddRange($this.TreeView.Source)
 
         $this.TreeView.SuspendLayout()
