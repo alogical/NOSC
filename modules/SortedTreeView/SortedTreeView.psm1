@@ -896,7 +896,6 @@ function New-SettingStaticButton {
     param(
         # The list of available data fields.
         [Parameter(Mandatory = $true)]
-        [AllowNull()]
         [AllowEmptyCollection()]
             [System.Collections.ArrayList]
             $FieldNames,
@@ -929,6 +928,7 @@ function New-SettingStaticButton {
     Add-Member -InputObject $Button -MemberType NoteProperty -Name FieldNames -Value $FieldNames
     Add-Member -InputObject $Button -MemberType NoteProperty -Name Settings -Value $SettingCollection
     Add-Member -InputObject $Button -MemberType NoteProperty -Name OptionsPanel -Value $OptionsPanel
+    Add-Member -InputObject $Button -MemberType NoteProperty -Name Type -Value $Type
 
     # Handler for adding new settings panels to the OptionsPanel
     $Button.Add_Click({
@@ -954,7 +954,7 @@ function New-SettingStaticButton {
 
         Write-Debug ("Avaliable Field:`r`n{0}" -f $available)
 
-        switch -Regex ($Type) {
+        switch -Regex ($this.Type) {
             '^Sort$' {
                 $LabelText = "Sort By:"
             }
@@ -966,7 +966,7 @@ function New-SettingStaticButton {
         $PanelParams = @{
             LabelText         = $LabelText
             FieldNames        = $this.FieldNames
-            Type              = $Type
+            Type              = $this.Type
             SettingCollection = $this.Settings
             SelectedItem      = $available
         }
@@ -996,6 +996,7 @@ function New-SettingPanel {
 
         [Parameter(Mandatory = $true)]
             [System.Collections.ArrayList]
+            [AllowEmptyCollection()]
             $SettingCollection,
 
         [Parameter(Mandatory = $true)]
@@ -1119,7 +1120,7 @@ function New-SettingsManager {
         TreeView        = $TreeView
 
         # Data field names
-        Fields          = $null
+        Fields          = New-Object System.Collections.ArrayList
 
         # TreeNode sorting and grouping settings
         SortBy          = New-Object System.Collections.ArrayList
@@ -1138,8 +1139,16 @@ function New-SettingsManager {
 
     ### Methods ---------------------------------------------------------------
     Add-Member -InputObject $SettingsManager -MemberType ScriptMethod -Name RegisterFields -Value {
-        param($fields)
-        $this.Fields = $fields
+        param(
+            [Parameter(Mandatory = $true)]
+                [System.Array]
+                $fields
+        )
+
+        if ($this.Fields.Count -gt 0) {
+            $this.Fields.Clear()
+        }
+        $this.Fields.AddRange($fields)
 
         # Prompt Flag if the View Settings needs to be updated by the user
         $RequireUpdate = $false
