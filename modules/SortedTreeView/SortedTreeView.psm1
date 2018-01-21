@@ -968,7 +968,7 @@ function New-SettingStaticButton {
             FieldNames        = $this.FieldNames
             Type              = $this.Type
             SettingCollection = $this.Settings
-            SelectedItem      = $available
+            InitialValue      = $available
         }
         $Panel = New-SettingPanel @PanelParams
 
@@ -1001,7 +1001,7 @@ function New-SettingPanel {
 
         [Parameter(Mandatory = $true)]
             [String]
-            $SelectedItem
+            $InitialValue
     )
 
     $Remove = New-Object System.Windows.Forms.Button
@@ -1044,7 +1044,7 @@ function New-SettingPanel {
     [void]$Panel.Controls.Add($Remove)
 
     $registration = [PSCustomObject]@{
-        Name          = $available
+        Name          = $InitialValue
         SortDirection = "Ascending"
         Setting       = $Panel
     }
@@ -1055,6 +1055,8 @@ function New-SettingPanel {
 
     Add-Member -InputObject $Panel -MemberType NoteProperty -Name SettingType -Value $Type
 
+    Add-Member -InputObject $Panel -MemberType NoteProperty -Name Initialized -Value $false
+
     Add-Member -InputObject $Panel -MemberType ScriptMethod -Name Unregister -Value {
         [void]$this.Parent.Controls.Remove($this)
         $this.SettingCollection.Remove($this.Registration)
@@ -1063,11 +1065,16 @@ function New-SettingPanel {
 
     # Set SelectedItem and the SelectedValueChanged last to prevent race conditions/issues with the
     # initialization of the controls and event handlers.
-    $FieldSelector.SelectedItem = $SelectedItem
     [void]$SettingCollection.Add($registration)
 
     $FieldSelector.Add_SelectedValueChanged({
         $current = $this.Parent # Setting Panel
+
+        if (!$current.Initialized) {
+            $this.SelectedItem = $current.Registration.Name
+            $current.Initialized = $true
+            return
+        }
 
         $registered = $this.SettingCollection.ToArray()
         foreach ($field in $registered) {
