@@ -84,8 +84,8 @@ Export-ModuleMember -Variable Credential
 ###############################################################################
 ###############################################################################
 
-$PuTTY = "$ModuleInvocationPath\..\..\bin\putty.exe"
-$confdb = "$ModuleInvocationPath\..\..\database\puttydb"
+$PuTTY  = Resolve-Path "$ModuleInvocationPath\..\..\bin\putty.exe"
+$confdb = Resolve-Path "$ModuleInvocationPath\..\..\database\puttydb"
 
 function Set-RegistryProfile ($Device) {
 

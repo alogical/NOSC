@@ -79,11 +79,11 @@ Export-ModuleMember -Function *
 ## explicit call to Export-ModuleMember
 ###############################################################################
 ###############################################################################
-Import-Module "$ModuleInvocationPath\..\SortedTreeView\SortedTreeView.psm1" -Prefix Tree
+Import-Module (Resolve-Path "$ModuleInvocationPath\..\SortedTreeView\SortedTreeView.psm1") -Prefix Tree
 Import-Module "$ModuleInvocationPath\DetailViewer.psm1" -Prefix Detail
 Import-Module "$ModuleInvocationPath\ReportViewer.psm1" -Prefix Report
 
-$ImagePath  = "$ModuleInvocationPath\..\..\resources"
+$ImagePath  = Resolve-Path "$ModuleInvocationPath\..\..\resources"
 
 ###############################################################################
 # Menu Definitions - Registered to component menu strip

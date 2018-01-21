@@ -101,8 +101,8 @@ Export-ModuleMember -Function *
 ###############################################################################
 Import-Module "$ModuleInvocationPath\..\SortedTreeView\SortedTreeView.psm1" -Prefix Nav
 
-$ImagePath = "$ModuleInvocationPath\..\..\resources"
-$BinPath   = "$ModuleInvocationPath\..\..\bin"
+$ImagePath = Resolve-Path "$ModuleInvocationPath\..\..\resources"
+$BinPath   = Resolve-Path "$ModuleInvocationPath\..\..\bin"
 
 ###############################################################################
 ### Settings Management -------------------------------------------------------

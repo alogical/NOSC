@@ -37,7 +37,7 @@ if (!$settings) {
         $settings.version = "1.0.0"
 
         # Local Database Location
-        $settings.localdb = "$InvocationPath\..\..\database\devicedb"
+        $settings.localdb = Resolve-Path "$InvocationPath\..\..\database\devicedb"
 
     # Configurable Settings #
     
