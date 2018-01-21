@@ -633,7 +633,7 @@ function New-DataStaticPanel {
     # Static property for the sort level settings to check when removing registrations
     Add-Member -InputObject $DataNodePanel -MemberType NoteProperty -Name SettingType -Value 'DataNode'
 
-    Add-Member -InputObject $DataNodePanel -MemberType NoteProperty -Name Settings -Value $SettingsManager.GroupBy
+    Add-Member -InputObject $DataNodePanel -MemberType NoteProperty -Name SettingsCollection -Value $SettingsManager.GroupBy
 
     Add-Member -InputObject $DataNodePanel -MemberType NoteProperty -Name Registration -Value $registration
 
@@ -647,7 +647,7 @@ function New-DataStaticPanel {
 
         $this.Registered = $false
 
-        [void]$this.Settings.Remove($this.Registration)
+        [void]$this.SettingsCollection.Remove($this.Registration)
 
         $this.Controls['DisplayFieldSelector'].SelectedIndex = 0
     }
@@ -677,7 +677,7 @@ function New-DataStaticPanel {
     $FieldSelector.Dock = [System.Windows.Forms.DockStyle]::Left
 
     # Settings Referenced used by Registration Handler
-    Add-Member -InputObject $FieldSelector -MemberType NoteProperty -Name Settings -Value $SettingsManager
+    Add-Member -InputObject $FieldSelector -MemberType NoteProperty -Name SettingsCollection -Value $SettingsManager.GroupBy
 
     # Data Node Label Registration Handler
     $FieldSelector.Add_SelectedValueChanged({
@@ -688,7 +688,8 @@ function New-DataStaticPanel {
             return
         }
 
-        $registered = $this.Settings.GroupBy.ToArray()
+        # Unregister conflicting Group registrations
+        $registered = $this.SettingsCollection.ToArray()
         foreach ($field in $registered) {
             if (!$field.Setting.Equals($current) -and $field.Name -eq $this.SelectedValue) {
                 if ($field.Setting.SettingType -eq 'Group') {
@@ -697,11 +698,13 @@ function New-DataStaticPanel {
             }
         }
 
-        Write-Debug ("Field Registered: {0}`t{1}" -f $current.Registration.Name, $current.GetHashCode())
+        # Set registration field name
         $current.Registration.Name = $this.SelectedValue
 
+        # Add registration
+        Write-Debug ("Field Registered: {0}`t{1}" -f $current.Registration.Name, $current.GetHashCode())
         if (!$current.Registered) {
-            [void]$this.Settings.GroupBy.Add($current.Registration)
+            [void]$this.SettingsCollection.Add($current.Registration)
             $current.Registered = $true
         }
     })
