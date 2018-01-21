@@ -44,19 +44,22 @@ function Initialize-Components {
             $OnLoad
     )
 
-    $Tree = Initialize-TreeComponents `
+    $Explorer = Initialize-TreeComponents `
          -Window          $Window              `
          -Parent          $Split.Panel1        `
          -MenuStrip       $null                `
          -OnLoad          $OnLoad              `
+         -Title           'Explorer'           `
          -Source          $BaseContainer.Data  `
          -ImageList       $ImageList           `
          -TreeDefinition  $TreeViewDefinition  `
          -GroupDefinition $GroupNodeDefinition `
          -NodeDefinition  $DataNodeDefinition
 
+    [Void]$Split.Panel1.Controls.Add($Explorer)
+
     # Attach reference to the navigation tree object for easy access by child components
-    Add-Member -InputObject $BaseContainer -MemberType NoteProperty -Name Tree -Value $Tree
+    Add-Member -InputObject $BaseContainer -MemberType NoteProperty -Name Explorer -Value $Explorer
 
     # Register Component Container
     [Void]$Parent.TabPages.Add($BaseContainer)
@@ -134,8 +137,8 @@ $Menu.File.Open = New-Object System.Windows.Forms.ToolStripMenuItem("Open", $nul
     if($($Dialog.ShowDialog()) -eq "OK") {
         $Data = Import-Csv $Dialog.FileName
 
-        if ($BaseContainer.Tree.Display.Nodes.Count -gt 0) {
-            $BaseContainer.Tree.Display.Nodes.Clear()
+        if ($BaseContainer.Explorer.TreeView.Nodes.Count -gt 0) {
+            $BaseContainer.Explorer.TreeView.Nodes.Clear()
         }
     }
     else{
@@ -154,16 +157,13 @@ $Menu.File.Open = New-Object System.Windows.Forms.ToolStripMenuItem("Open", $nul
                         % {Write-Output $_.Name})
         )
 
-        $BaseContainer.Tree.SettingsTab.RegisterFields($FieldNames)
+        $BaseContainer.Explorer.Settings.RegisterFields($FieldNames)
 
         # Saved reference to the data for later export
         [Void]$BaseContainer.Data.Clear()
         [Void]$BaseContainer.Data.AddRange($Data)
-
-        # Set TreeView Object Data
-        $BaseContainer.Tree.SettingsTab.DataLabel.DataSource = @([String]::Empty) + @($FieldNames)
     }
-    $BaseContainer.Tree.SettingsTab.PromptUser()
+    $BaseContainer.Explorer.Settings.PromptUser()
 })
 $Menu.File.Open.Name = 'Open'
 
