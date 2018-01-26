@@ -66,11 +66,11 @@ function Initialize-Components {
     Add-Member -InputObject $Loader -MemberType ScriptMethod -Name Load -Value {
         param($sender, $e)
         if ($this.Settings) {
-            if ($this.Settings.remotedb -eq [string]::Empty) {
-                return
+            if ([String]::IsNullOrWhiteSpace($this.Settings.remotedb)) {
+                $this.Sync_DeviceData($this.Settings.localdb, $this.Settings.remotedb)
             }
-            if (Test-Path -LiteralPath $this.Settings.remotedb -PathType Leaf) {
-                $this.Load_DeviceList($this.Settings.remotedb, $this.View, $this.Parent)
+            if (Test-Path -LiteralPath $this.Settings.localdb -PathType Leaf) {
+                $this.Load_DeviceData($this.Settings.localdb, $this.View, $this.Parent)
             }
             else {
                 [System.Windows.Forms.MessageBox]::Show(
@@ -82,7 +82,8 @@ function Initialize-Components {
             }
         }
     }
-    Add-Member -InputObject $Loader -MemberType ScriptMethod -Name Load_DeviceList -Value ${Function:Load-DeviceList}
+    Add-Member -InputObject $Loader -MemberType ScriptMethod -Name Load_DeviceData -Value ${Function:Load-DeviceData}
+    Add-Member -InputObject $Loader -MemberType ScriptMethod -Name Sync_DeviceData -Value ${Function:Sync-DeviceData}
     [Void]$OnLoad.Add($Loader)
 
     # Register Component (TableLayout Parent)
@@ -174,7 +175,7 @@ $Menu.File.Open = New-Object System.Windows.Forms.ToolStripMenuItem("Open", $nul
         
     # Run Selection Dialog
     if($($Dialog.ShowDialog()) -eq "OK") {
-        Load-DeviceList -Path $Dialog.FileName -View $this.View -Component $this.Component
+        Load-DeviceData -Path $Dialog.FileName -View $this.View -Component $this.Component
     }
 })
 $Menu.File.Open.Name = 'Open'
@@ -189,6 +190,10 @@ $Menu.Settings = New-Object System.Windows.Forms.ToolStripMenuItem("Settings", $
     # Currently only launches the settings dialog window, configuration settings are
     # only used during loading.
     $Settings = & "$SettingsDialog" $Settings
+
+    if (![String]::IsNullOrWhiteSpace($Settings.remotedb)) {
+        Sync-DeviceData -localdb $Settings.localdb -remotedb $Settings.remotedb
+    }
 })
 
 ## Dynamic Fields Menu --------------------------------------------------------
@@ -205,7 +210,7 @@ $Menu.Fields.DropDown.Add_Closing({
 ###############################################################################
 ### Device Data Management
 
-function Load-DeviceList {
+function Load-DeviceData {
     param(
         [Parameter(Mandatory = $true)]
             [String]
@@ -306,6 +311,19 @@ function Load-DeviceList {
     else {
         $View.NavPanel.Settings.PromptUser()
     }
+}
+
+function Sync-DeviceData {
+    param(
+        [Parameter(Mandatory = $true)]
+            [String]
+            $localdb,
+
+        [Parameter(Mandatory = $true)]
+            [String]
+            $remotedb
+    )
+
 }
 
 ###############################################################################
