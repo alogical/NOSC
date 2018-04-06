@@ -1,0 +1,49 @@
+!---------------------------------!
+!-- OSPF Baseline Configuration --!
+!---------------------------------!
+
+!-- OSPF Source Interface --!
+interface loopback <#>
+ description Management
+ ip address <MANAGEMENT-IP> 255.255.255.255
+
+!-- Generic OSPF Configuration --!
+router ospf 1
+ ip ospf passive-interface default
+ no ip ospf passive-interface <PHYSICAL-INTERFACE-TO-NEIGHBOR>
+
+!-- LSA Authentication --!
+! message-digest *only use if key-chain is unavailable*
+!interface <type<num>>
+! ip ospf message-digest-key <AUTHENTICATION-PASSWORD>
+
+! key-chain *preferred method* 30-day keys (2,592,000-seconds)
+!  IOS v15.4(2)T1
+key chain <OSPF-KEY[-PID]>
+ key <0-2147483647>
+  key-string <AUTHENTICATION-PASSWORD>
+  cryptographic-algorithm <hmac-sha-256|hmac-sha-1>
+  send-lifetime 00:00:00 1 Jan 2018 duration 2592000
+  accept-lifetime 00:00:00 1 Jan 2018 duration 2592500
+ key <0-2147483647>
+  key-string <AUTHENTICATION-PASSWORD>
+  cryptographic-algorithm <hmac-sha-256|hmac-sha-1>
+  send-lifetime 00:00:00 15 Jan 2018 duration 2592000
+  accept-lifetime 00:00:00 15 Jan 2018 duration 2592500
+ key <0-2147483647>
+  key-string <AUTHENTICATION-PASSWORD>
+  cryptographic-algorithm <hmac-sha-256|hmac-sha-1>
+  send-lifetime 00:00:00 30 Jan 2018 duration 2592000
+  accept-lifetime 00:00:00 30 Jan 2018 duration 2592500
+
+interface <type<num>>
+ ip ospf authentication key-chain <OSPF-KEY[-PID]>
+
+!-- Access Control --!
+ip access-list extended 110
+ permit ospf host <NEIGHBOR-IP> <MANAGEMENT-IP>
+ permit ospf host <NEIGHBOR-IP> host 224.0.0.5 eq 89
+ permit ospf host <NEIGHBOR-IP> host 224.0.0.6 eq 89
+!...repeat ^^ for each neighbor
+
+!-- Control Plane Protection --!

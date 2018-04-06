@@ -1,0 +1,26 @@
+!-----------------------------------------!
+!-- SSH Security Baseline Configuration --!
+!-----------------------------------------!
+
+!-- Basic Config --!
+! Pre-Requesites
+!  -- Fully Qualified Domain Name (FQDN) Components --
+hostname <SITECODE-ROLE-BLDG-ROOM[-SUBSITE-NAME]>
+ip domain-name <example.com>
+
+!  -- User Authentication (AAA) ---
+!    See... aaa-baseline
+!
+!  SSH requires username and password authentication, which
+!  is not met by applying a password to the vty line only.
+
+!-- Securing SSH --!
+! STIG NETID:
+crypto key generage rsa modulus 2048
+ip ssh dh min 2048
+
+! STIG NETID:
+ip ssh version 2
+
+! STIG NETID:
+ip ssh source-interface Loopback <#> !-- management loopback --!

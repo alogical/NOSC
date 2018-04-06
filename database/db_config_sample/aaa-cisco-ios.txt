@@ -1,0 +1,32 @@
+!-----------------------------------------!
+!-- AAA Security Baseline Configuration --!
+!-----------------------------------------!
+
+!-- Recovery Account --!
+! STIG NETID: // Local user account exemption
+username <NAME> privilege 15 secret <PASSWORD>
+
+!-- Basic Config --!
+! enable aaa
+aaa new-model
+
+! configure authentication server
+tacacs server <NAME>
+  address ipv4 <IP ADDRESS>
+  key <PASSWORD>
+!... repeat for (n) servers
+
+! network latency denial of service protection
+tacacs-server timeout 10
+
+!-- Authentication --!
+aaa authentication login default group tacacs+ local
+
+!-- Command Authorization --!
+aaa authorization config-commands
+aaa authorization exec default group tacacs+ local
+aaa authorization commands 15 default group tacacs+ local
+
+!-- Command Accounting --!
+aaa accounting exec default start-stop group tacacs+
+aaa accounting commands 15 default stop-only group tacacs+

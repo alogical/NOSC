@@ -1,0 +1,14 @@
+!-----------------------------------------------------!
+!-- Unused Services Security Baseline Configuration --!
+!-----------------------------------------------------!
+
+!-- Cisco Router-Switch IP Services --!
+no ip http server
+no ip http secure-server !-- exception: Cisco ASA
+no ip bootp
+
+!-- Behaviors --!
+no ip domain-lookup
+no ip gratuitous-arps
+no ip host-routing
+no ip source-route

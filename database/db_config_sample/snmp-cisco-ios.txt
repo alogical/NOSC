@@ -1,0 +1,22 @@
+!---------------------------------!
+!-- SNMP Baseline Configuration --!
+!---------------------------------!
+
+
+!-- STIG: [] --!
+! SNMPv3 is the only version of SNMP allowed to be in use on the network.
+
+!-- Basic Configuration --!
+! enable snmpv3
+!   requires unique engineID per device (min 10 hexadecimal digits)
+!   nosc api integration - use device guid
+snmp-server engineID local <0x0000000000[00000000000000]>
+
+! define snmp view
+snmp-server view <VIEW-NAME> mib-2 included
+
+! define snmp group - permitted views
+snmp-server group <GROUP-NAME> v3 encrypted auth sha access priv aes 256 read <VIEW-NAME> <MANAGEMENT-ACL>
+
+! create snmp user
+snmp-server user <USER-NAME> <GROUP-NAME> v3 auth sha <AUTH-PASSWORD> priv aes 256 <ENCRYPT-KEY>
