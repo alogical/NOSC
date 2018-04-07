@@ -27,35 +27,39 @@ $ModuleInvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyComm
 function Initialize-Components {
     param(
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.Form]$Window,
+            [System.Windows.Forms.Form]
+            $Window,
 
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.TabControl]$Parent,
+            [System.Windows.Forms.TabControl]
+            $Parent,
 
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.MenuStrip]$MenuStrip,
+            [System.Windows.Forms.MenuStrip]
+            $MenuStrip,
 
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
-            [System.Collections.ArrayList]$OnLoad
+            [System.Collections.ArrayList]
+            $OnLoad
     )
 
-    $Tree = Initialize-TreeComponents `
+    $Explorer = Initialize-TreeComponents `
          -Window          $Window              `
          -Parent          $Split.Panel1        `
          -MenuStrip       $null                `
          -OnLoad          $OnLoad              `
+         -Title           'Explorer'           `
          -Source          $BaseContainer.Data  `
          -ImageList       $ImageList           `
          -TreeDefinition  $TreeViewDefinition  `
          -GroupDefinition $GroupNodeDefinition `
          -NodeDefinition  $DataNodeDefinition
 
-    # Attach reference to the tree object for easy access by other child components
-    Add-Member -InputObject $BaseContainer -MemberType NoteProperty -Name Tree -Value $Tree
+    [Void]$Split.Panel1.Controls.Add($Explorer)
 
-    # Register Menus
-    [Void]$ComponentMenu.Items.Add($ComplianceMenu)
+    # Attach reference to the navigation tree object for easy access by child components
+    Add-Member -InputObject $BaseContainer -MemberType NoteProperty -Name Explorer -Value $Explorer
 
     # Register Component Container
     [Void]$Parent.TabPages.Add($BaseContainer)
@@ -82,20 +86,16 @@ Import-Module "$ModuleInvocationPath\ReportViewer.psm1" -Prefix Report
 $ImagePath  = "$ModuleInvocationPath\..\..\resources"
 
 ###############################################################################
-# Main Menu Definitions
-#region
-### File Menu -------------------------------------------------------------
-$FileMenu = @{}
-$FileMenu.SaveAsCSV = New-Object System.Windows.Forms.ToolStripMenuItem("CSV", $null, {
-    param($sender, $e)
+# Menu Definitions - Registered to component menu strip
+$Menu = @{}
 
-#    $path = Split-Path $BaseContainer.Data.SourceFile -Parent
-#    $file = Split-Path $BaseContainer.Data.SourceFile -Leaf
+### File Menu -------------------------------------------------------------
+$Menu.File = @{}
+$Menu.File.SaveAsCSV = New-Object System.Windows.Forms.ToolStripMenuItem("CSV", $null, {
+    param($sender, $e)
 
     $Dialog = New-Object System.Windows.Forms.SaveFileDialog
     $Dialog.ShowHelp = $false
-#    $Dialog.InitialDirectory = $path
-#    $Dialog.FileName = $file
 
     $Dialog.Filter = "Csv File (*.csv)|*.csv"
     if($Dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK){
@@ -116,12 +116,12 @@ $FileMenu.SaveAsCSV = New-Object System.Windows.Forms.ToolStripMenuItem("CSV", $
         $BaseContainer.Data | Export-Csv $Dialog.FileName -NoTypeInformation
     }
 })
-$FileMenu.SaveAsCSV.Name = 'SaveAsCSV'
+$Menu.File.SaveAsCSV.Name = 'CSV'
 
-$FileMenu.SaveAs = New-Object System.Windows.Forms.ToolStripMenuItem("SaveAs", $null, @($FileMenu.SaveAsCSV))
-$FileMenu.SaveAs.Name = 'ComplianceSaveAs'
+$Menu.File.SaveAs = New-Object System.Windows.Forms.ToolStripMenuItem("SaveAs", $null, @($Menu.File.SaveAsCSV))
+$Menu.File.SaveAs.Name = 'SaveAs'
 
-$FileMenu.Open = New-Object System.Windows.Forms.ToolStripMenuItem("Open", $null, {
+$Menu.File.Open = New-Object System.Windows.Forms.ToolStripMenuItem("Open", $null, {
     param($sender, $e)
     
     $Dialog = New-Object System.Windows.Forms.OpenFileDialog
@@ -137,8 +137,8 @@ $FileMenu.Open = New-Object System.Windows.Forms.ToolStripMenuItem("Open", $null
     if($($Dialog.ShowDialog()) -eq "OK") {
         $Data = Import-Csv $Dialog.FileName
 
-        if ($BaseContainer.Tree.Display.Nodes.Count -gt 0) {
-            $BaseContainer.Tree.Display.Nodes.Clear()
+        if ($BaseContainer.Explorer.TreeView.Nodes.Count -gt 0) {
+            $BaseContainer.Explorer.TreeView.Nodes.Clear()
         }
     }
     else{
@@ -157,22 +157,18 @@ $FileMenu.Open = New-Object System.Windows.Forms.ToolStripMenuItem("Open", $null
                         % {Write-Output $_.Name})
         )
 
-        $BaseContainer.Tree.SettingsTab.RegisterFields($FieldNames)
+        $BaseContainer.Explorer.Settings.RegisterFields($FieldNames)
 
         # Saved reference to the data for later export
         [Void]$BaseContainer.Data.Clear()
         [Void]$BaseContainer.Data.AddRange($Data)
-
-        # Set TreeView Object Data
-        $BaseContainer.Tree.SettingsTab.DataLabel.DataSource = @([String]::Empty) + @($FieldNames)
     }
-    $BaseContainer.Tree.SettingsTab.PromptUser()
+    $BaseContainer.Explorer.Settings.PromptUser()
 })
-$FileMenu.Open.Name = 'ComplianceOpen'
+$Menu.File.Open.Name = 'Open'
 
-$ComplianceMenu = New-Object System.Windows.Forms.ToolStripMenuItem("File", $null, @($FileMenu.Open, $FileMenu.SaveAs))
-$ComplianceMenu.Name = 'ComplianceMenu'
-#endregion
+$Menu.File.Root = New-Object System.Windows.Forms.ToolStripMenuItem("File", $null, @($Menu.File.Open, $Menu.File.SaveAs))
+$Menu.File.Root.Name = 'File'
 
 ###############################################################################
 # Compliance Report Tab Container Definitions
@@ -201,9 +197,12 @@ $Layout = New-Object System.Windows.Forms.TableLayoutPanel
     $Layout.RowStyles[1].SizeType = [System.Windows.Forms.SizeType]::Percent
     $Layout.RowStyles[1].Height = 100
 
-$ComponentMenu = New-Object System.Windows.Forms.MenuStrip
-$ComponentMenu.Dock = [System.Windows.Forms.DockStyle]::Fill
-    [Void]$Layout.Controls.Add($ComponentMenu, 0, 0)
+# Register Menus
+$MenuStrip = New-Object System.Windows.Forms.MenuStrip
+$MenuStrip.Dock = [System.Windows.Forms.DockStyle]::Fill
+
+    [Void]$MenuStrip.Items.Add($Menu.File.Root)
+    [Void]$Layout.Controls.Add($MenuStrip, 0, 0)
 
 $Split = New-Object System.Windows.Forms.SplitContainer
     $Split.Dock = [System.Windows.Forms.DockStyle]::Fill
@@ -354,22 +353,22 @@ $TreeViewDefinition.Methods.GetChecked = {
 # Parameter Encapsulation Object
 $DataNodeDefinition = [PSCustomObject]@{
     # Custom Properties
-    Custom     = @{}
+    NoteProperties = @{}
 
     # [System.Windows.Forms.TreeViewNode] Properties
-    Properties = @{}
+    Properties     = @{}
 
     # ScriptMethod Definitions
-    Methods    = @{}
+    Methods        = @{}
 
     # [System.Windows.Forms.TreeViewNode] Event Handlers
-    Handlers   = @{}
+    Handlers       = @{}
 
     # SortedTreeView Module TreeNode Processing Methods
-    Processors = @{}
+    Processors     = @{}
 }
 
-$DataNodeDefinition.Custom.Type = 'Data'
+$DataNodeDefinition.NoteProperties.Type = 'Data'
 
 $DataNodeDefinition.Properties.ContextMenuStrip = &{
     $context = New-Object System.Windows.Forms.ContextMenuStrip
@@ -426,12 +425,16 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
     [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripSeparator) )
     [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripMenuItem("Putty", $null, {
         param ($sender, $e)
-        $Menu = $sender.GetCurrentParent()
-        [System.Windows.Forms.TreeView] $TreeView = $Menu.SourceControl
-        [System.Windows.Forms.TreeNode] $Node = $TreeView.SelectedNode
+        $menu = $sender.GetCurrentParent()
+        [System.Windows.Forms.TreeView] $treeview = $menu.SourceControl
+        [System.Windows.Forms.TreeNode] $node = $treeview.SelectedNode
 
         # Dependency... Putty.psm1; imported by initialization script nosc.ps1
-        Open-PTYPutty $Node.Tag.Device
+        $target = [PSCustomObject]@{
+            Hostname = $node.Tag.Hostname
+            IP       = $node.Tag.Device
+        }
+        Open-PTYPutty $target
     })))
     return $context
 }
@@ -479,19 +482,19 @@ $DataNodeDefinition.Processors.Images = {
 # Parameter Encapsulation Object
 $GroupNodeDefinition = [PSCustomObject]@{
     # Custom Properties
-    Custom     = @{}
+    NoteProperties = @{}
 
     # [System.Windows.Forms.TreeViewNode] Properties
-    Properties = @{}
+    Properties     = @{}
 
     # ScriptMethod Definitions
-    Methods    = @{}
+    Methods        = @{}
 
     # [System.Windows.Forms.TreeViewNode] Event Handlers
-    Handlers   = @{}
+    Handlers       = @{}
 
     # SortedTreeView Module TreeNode Processing Methods
-    Processors = @{}
+    Processors     = @{}
 }
 
 $GroupNodeDefinition.Processors.Images = {

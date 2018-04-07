@@ -27,36 +27,44 @@ function Initialize-Components {
     param(
         [Parameter(Mandatory = $true)]
             [AllowNull()]
-            [System.Windows.Forms.Form]$Window,
+            [System.Windows.Forms.Form]
+            $Window,
 
         [Parameter(Mandatory = $true)]
             [AllowNull()]
-            [System.Windows.Forms.TabControl]$Parent,
+            [System.Windows.Forms.TabControl]
+            $Parent,
 
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.MenuStrip]$MenuStrip,
+            [System.Windows.Forms.MenuStrip]
+            $MenuStrip,
 
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
-            [System.Collections.ArrayList]$OnLoad
+            [System.Collections.ArrayList]
+            $OnLoad
     )
 
     # Register Menus
-    [void]$MenuStrip.Items.Add($PuttyMenu)
+    [void]$MenuStrip.Items.Add($Menu.Putty.Root)
 }
 
-function Open-Putty ($ip) {
-    if ($Script:Credential -eq $null) {
-        $Script:Credential = Get-Credential
+function Open-Putty ($Target) {
+    if ($Credential -eq $null) {
+        $Credential = Get-Credential
     }
+
+    $profile = Set-RegistryProfile $Target
+
     $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
     $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
-    $ConnectString = ("{0} {1}@{2} -pw `$pw" -f 
-        $putty,
+    $connect = ("{0} -load `"{1}`" -l {2} -pw `$pw" -f
+        $PuTTY,
+        $profile,
         $Credential.UserName,
-        $ip
+        $Target.IP
     )
-    Invoke-Expression $ConnectString
+    Invoke-Expression $connect
     [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
 }
 
@@ -76,17 +84,54 @@ Export-ModuleMember -Variable Credential
 ###############################################################################
 ###############################################################################
 
-$putty = "$ModuleInvocationPath\..\..\bin\putty.exe"
+$PuTTY = "$ModuleInvocationPath\..\..\bin\putty.exe"
+$confdb = "$ModuleInvocationPath\..\..\database\puttydb"
 
-# Main Menu Definitions
-#region
-### File Menu -------------------------------------------------------------
-$SubMenu1 = @()
-$SubMenu1 += New-Object System.Windows.Forms.ToolStripMenuItem("Reset Credential", $null, {
+function Set-RegistryProfile ($Device) {
+
+    $hostname = $Device.Hostname.Trim() -replace '[^\w]', '-'
+
+    $conf    = Join-Path $confdb ("{0}.reg" -f $hostname)
+    $default = Join-Path $confdb default.reg
+
+    if (!(Test-Path -Path $conf)){
+        Copy-Item $default $conf | Out-Null
+    }
+    $profile = Get-Content $conf
+
+    $i = 0
+    foreach ($line in $profile){
+        switch -regex ($line) {
+            '^\[HKEY_CURRENT_USER\\SOFTWARE\\SimonTatham\\PuTTY\\Sessions[^]]+]$' {
+                $profile[$i] = "[HKEY_CURRENT_USER\SOFTWARE\SimonTatham\PuTTY\Sessions\{0}]" -f $hostname
+            }
+            '^"HostName"="[^"]*"$' {
+                $profile[$i] = "`"HostName`"=`"{0}`"" -f $Device.ip
+            }
+            '^"WinTitle"="[^"]*"$' {
+                $profile[$i] = "`"WinTitle`"=`"{0}  [{1}]`"" -f $hostname, $Device.ip
+            }
+        }
+        $i++
+    }
+
+    $profile > $conf
+    $command = "regedit /s $conf"
+    Invoke-Expression $command
+    return $hostname
+}
+
+###############################################################################
+### Main Menu Definitions
+$Menu = @{}
+
+### Main Menu -----------------------------------------------------------------
+$Menu.Putty = @{}
+$Menu.Putty.ResetCredential = New-Object System.Windows.Forms.ToolStripMenuItem("Reset Credential", $null, {
     param($sender, $e)
     $Script:Credential = Get-Credential
 })
+$Menu.Putty.ResetCredential.Name = "ResetCredential"
 
-$PuttyMenu = New-Object System.Windows.Forms.ToolStripMenuItem("Putty", $null, $SubMenu1)
-$PuttyMenu.Name = 'PuttyMenu'
-#endregion
+$Menu.Putty.Root = New-Object System.Windows.Forms.ToolStripMenuItem("PuTTY", $null, @($Menu.Putty.ResetCredential))
+$Menu.Putty.Name = 'Putty'
