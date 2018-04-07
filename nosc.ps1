@@ -11,6 +11,11 @@
     Author: [DKI] Daniel Ives
 
 .NOTES
+    4/7/2018 [DKI] >> Cleanup of the project files for hosting on Github.
+    - Removed DISA STIG zip files.
+    - Removed PackageManager config files with share drive paths.
+    - Removed Device module config files with share drive paths.
+
     12/31/2017 [DKI] >> Continuation of refactoring and feature updates.
     ~ Refactored the Open file menu of the Compliance module to use the
       better method set in the Device module.
