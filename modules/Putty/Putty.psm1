@@ -67,6 +67,42 @@ function Open-SSH ($Target) {
     [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
 }
 
+function Send-File ($Target, $File) {
+    if ($Script:Credential -eq $null) {
+        $Script:Credential = Get-Credential
+    }
+
+    $fname = Split-Path $File.FullName -Leaf
+
+    $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
+    $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
+    $ConnectString = ("{0} -pw `$pw -scp '{1}' {2}@{3}:flash:'{4}'" -f
+        $pscp,
+        $File.FullName,
+        $Credential.UserName,
+        $Target.ip,
+        $fname
+    )
+
+    if (![System.IO.File]::Exists($pscp)) {
+        Copy-Item "$NOSC\bin\pscp.exe" $pscp
+    }
+
+    try {
+        Invoke-Expression $ConnectString
+    }
+    catch {
+        [System.Windows.Forms.MessageBox]::Show(
+            "$_",
+            "pSCP Secure File Transfer",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error)
+    }
+    finally {
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+    }
+}
+
 Export-ModuleMember -Function *
 
 # Global Objects
