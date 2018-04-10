@@ -49,7 +49,7 @@ function Initialize-Components {
     [void]$MenuStrip.Items.Add($Menu.Putty.Root)
 }
 
-function Open-Putty ($Target) {
+function Open-SSH ($Target) {
     if ($Credential -eq $null) {
         $Credential = Get-Credential
     }
@@ -59,10 +59,9 @@ function Open-Putty ($Target) {
     $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
     $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
     $connect = ("{0} -load `"{1}`" -l {2} -pw `$pw" -f
-        $PuTTY,
+        $PUTTY,
         $profile,
-        $Credential.UserName,
-        $Target.IP
+        $Credential.UserName
     )
     Invoke-Expression $connect
     [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
@@ -84,15 +83,18 @@ Export-ModuleMember -Variable Credential
 ###############################################################################
 ###############################################################################
 
-$PuTTY  = Resolve-Path "$ModuleInvocationPath\..\..\bin\putty.exe"
-$confdb = Resolve-Path "$ModuleInvocationPath\..\..\database\puttydb"
+Set-Variable -Name NOSC -Value "$env:USERPROFILE\Documents\WindowsPowerShell\Programs\NOSC" -Option Constant
+Set-Variable -Name PSCP -Value "$env:USERPROFILE\Desktop\pscp.exe" -Option Constant
+Set-Variable -Name PUTTY -Value "putty" -Option Constant
+Set-Variable -Name CONFDB -Value "$NOSC\database\puttydb" -Option Constant
+$env:Path += "$NOSC\bin;"
 
 function Set-RegistryProfile ($Device) {
 
     $hostname = $Device.Hostname.Trim() -replace '[^\w]', '-'
 
-    $conf    = Join-Path $confdb ("{0}.reg" -f $hostname)
-    $default = Join-Path $confdb default.reg
+    $conf    = Join-Path $CONFDB ("{0}.reg" -f $hostname)
+    $default = Join-Path $CONFDB default.reg
 
     if (!(Test-Path -Path $conf)){
         Copy-Item $default $conf | Out-Null

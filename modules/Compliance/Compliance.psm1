@@ -244,13 +244,16 @@ $ImageList.Images.Add('error',
 # Parameter Encapsulation Object
 $TreeViewDefinition = [PSCustomObject]@{
     # [System.Windows.Forms.TreeView] Properties
-    Properties = @{}
+    Properties     = @{}
+
+    # Customized Properties
+    NoteProperties = @{}
 
     # ScriptMethod Definitions
-    Methods    = @{}
+    Methods        = @{}
 
     # [System.Windows.Forms.TreeView] Event Handlers
-    Handlers   = @{}
+    Handlers       = @{}
 }
 
 $TreeViewDefinition.Handlers.AfterSelect = {
@@ -434,7 +437,7 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
             Hostname = $node.Tag.Hostname
             IP       = $node.Tag.Device
         }
-        Open-PTYPutty $target
+        Open-PuttySSH $target
     })))
     return $context
 }
