@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     PuTTY configuration and session manager.
 
@@ -56,15 +56,15 @@ function Open-SSH ($Target) {
 
     $profile = Set-RegistryProfile $Target
 
-    $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
-    $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
+    $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
     $connect = ("{0} -load `"{1}`" -l {2} -pw `$pw" -f
         $PUTTY,
         $profile,
         $Credential.UserName
     )
     Invoke-Expression $connect
-    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
 }
 
 function Send-File ($Target, $File) {
@@ -74,10 +74,10 @@ function Send-File ($Target, $File) {
 
     $fname = Split-Path $File.FullName -Leaf
 
-    $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
-    $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
+    $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
     $ConnectString = ("{0} -pw `$pw -scp '{1}' {2}@{3}:flash:'{4}'" -f
-        $pscp,
+        $PSCP,
         $File.FullName,
         $Credential.UserName,
         $Target.ip,
@@ -99,7 +99,7 @@ function Send-File ($Target, $File) {
             [System.Windows.Forms.MessageBoxIcon]::Error)
     }
     finally {
-        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
     }
 }
 
