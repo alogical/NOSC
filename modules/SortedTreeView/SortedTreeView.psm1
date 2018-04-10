@@ -661,10 +661,16 @@ function New-TreeViewTab {
 
     Add-Member -InputObject $TreeView -MemberType NoteProperty -Name DataNodes -Value $null
 
-    ### BUILT-IN PROPERTIES ---------------------------------------------------
+    ### PROPERTIES ------------------------------------------------------------
+    # Built-In
     # Late binding (dynamic)
     foreach ($property in $Definition.Properties.GetEnumerator()) {
         $TreeView.($property.Key) = $property.Value
+    }
+
+    # Custom
+    foreach ($property in $Definition.NoteProperties.GetEnumerator()) {
+        Add-Member -InputObject $TreeView -MemberType NoteProperty -Name $property.Key -Value $property.Value
     }
 
     ### EVENT HANDLERS --------------------------------------------------------
