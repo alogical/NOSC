@@ -84,8 +84,8 @@ Export-ModuleMember -Variable Credential
 ###############################################################################
 
 Set-Variable -Name NOSC -Value "$env:USERPROFILE\Documents\WindowsPowerShell\Programs\NOSC" -Option Constant
-Set-Variable -Name PUTTY -Value "putty" -Option Constant
 Set-Variable -Name PSCP -Value "$env:USERPROFILE\Desktop\pscp.exe" -Option Constant
+Set-Variable -Name PUTTY -Value "putty" -Option Constant
 Set-Variable -Name CONFDB -Value "$NOSC\database\puttydb" -Option Constant
 $env:Path += "$NOSC\bin;"
 
