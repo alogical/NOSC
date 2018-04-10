@@ -14,6 +14,7 @@ NOSC provides an integrated interface for network management utilities.
     Guide (STIG) checklist automation and graphical interface.
 
 -- CHANGE LOG
+
     4/10/2018 [DKI] >> Hotfix patch for PuTTY SSH.
     ~ Moved this log out of the nosc.ps1 file.
     + Added SortedTreeView support for callers of the module to add custom note
