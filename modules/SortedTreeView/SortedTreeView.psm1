@@ -51,16 +51,16 @@
     defined NoteProperties.  The Methods collection expects scriptblocks for
     values, and will throw an error otherwise.
     
-    The 'Handlers' collection of the definition may only contain key names of
-    event members of the object as defined by the objects .Net class.  The
-    values for each entry must be a scriptblock.
+    The 'Handlers' collection of the definition may only contain names of event
+    defined by the objects .Net class.  The values for each entry must be a
+    scriptblock.
     
-    The only difference between the TreeView definition and a TreeNode is
-    the node processors.  A node processor is a scriptblock called against
+    The only difference between the definition of a TreeView and a TreeNode is
+    the 'Processors' collection.  Node processors are scriptblocks called against
     each node during it's creation, allowing the node to be further customized
-    at runtime based on the data associated with the node.  The key name of
-    the processor is only locally significant to the collection itself, and
-    may only contain scriptblocks as values.
+    at runtime based on the data used to create the node.  The key name of the
+    processor is only locally significant to the collection itself, and may only
+    contain scriptblocks as values.
     
     The NoteProperty names 'Static', 'Source', and 'DataNodes' are part of the
     SortedTreeView Architecture and may not be used in the NoteProperties
@@ -140,33 +140,40 @@ function Initialize-Components {
             [AllowNull()]
             [System.Windows.Forms.MenuStrip]
             $MenuStrip,
-
+        
+        # Collection of function callbacks executed by the application at runtime.
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
             [System.Collections.ArrayList]
             $OnLoad,
 
+        # Title of the TabPage containing the TreeView.
         [Parameter(Mandatory = $false)]
             [String]
             $Title = "TreeView",
 
+        # The data to be displayed by the TreeView.
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
             [System.Collections.ArrayList]
             $Source,
 
+        # Collection of images to be used for TreeNodes.
         [Parameter()]
             [System.Windows.Forms.ImageList]
             $ImageList,
 
+        # TreeView customization definition.
         [Parameter()]
             [PSCustomObject]
             $TreeDefinition,
 
+        # Group TreeNode customization definition.
         [Parameter()]
             [PSCustomObject]
             $GroupDefinition,
 
+        # Data TreeNode customization definition.
         [Parameter()]
             [PSCustomObject]
             $NodeDefinition
