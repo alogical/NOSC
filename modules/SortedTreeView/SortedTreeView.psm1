@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Custom TreeView control with display and filter settings.
 
