@@ -49,7 +49,7 @@ function Initialize-Components {
     [void]$MenuStrip.Items.Add($Menu.Putty.Root)
 }
 
-function Open-Putty ($Target) {
+function Open-SSH ($Target) {
     if ($Credential -eq $null) {
         $Credential = Get-Credential
     }

@@ -493,13 +493,16 @@ $ImageList.Images.Add('not-monitored',
 ## Parameter Encapsulation Object ---------------------------------------------
 $TreeViewDefinition = [PSCustomObject]@{
     # [System.Windows.Forms.TreeView] Properties
-    Properties = @{}
+    Properties     = @{}
+
+    # Customized Properties
+    NoteProperties = @{}
 
     # ScriptMethod Definitions
-    Methods    = @{}
+    Methods        = @{}
 
     # [System.Windows.Forms.TreeView] Event Handlers
-    Handlers   = @{}
+    Handlers       = @{}
 }
 
 $TreeViewDefinition.Methods.GetChecked = {
@@ -557,7 +560,7 @@ $TreeViewDefinition.Handlers.KeyDown = {
             Hostname = $Node.Tag.Device_Hostname
             IP       = $Node.Tag.ip
         }
-        Open-PTYPutty $target
+        Open-PuttySSH $target
 
         # Prevent other controls from receiving this event
         $e.SuppressKeyPress = $true
@@ -654,7 +657,7 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
         }
 
         # Dependency... Putty.psm1; imported globally by initialization script nosc.ps1
-        Open-PTYPutty $target
+        Open-PuttySSH $target
     })))
 
     # PUTTY MULTISELECT -------------------------------------------------------
@@ -683,7 +686,7 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
                 IP       = $record.ip
             }
 
-            Open-PTYPutty $target
+            Open-PuttySSH $target
         }
     })))
 
@@ -743,7 +746,7 @@ $GroupNodeDefinition = [PSCustomObject]@{
     Processors     = @{}
 }
 
-$GroupNodeDefinition.Custom.Type = 'Group'
+$GroupNodeDefinition.NoteProperties.Type = 'Group'
 
 $GroupNodeDefinition.Processors.Images = {
     param($node, $data)
