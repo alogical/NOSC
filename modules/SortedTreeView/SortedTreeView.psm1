@@ -3,7 +3,108 @@
     Custom TreeView control with display and filter settings.
 
 .DESCRIPTION
+    A TreeView control wrapped in a TabContainer that provides data grouping
+    and sorting functionality built in.
 
+.NOTES
+    #
+    # Displaying Data
+    #
+    A new SortedTreeView control is instantiated through a call to the
+    Intialize-Components function.
+    
+    The TreeView can be populated by setting the $container.Tree.Source
+    property.  Data is expected to be supplied in a flat data table format
+    of record objects, eg. no nested data structures (think .csv file type
+    data).  The Source property is a System.Collections.ArrayList, and can
+    accept a large array of data using the Source.AddRange([array]) method.
+    
+    After the TreeView's Source collection has been populated with data, it
+    can be displayed by prompting the user to configure the view settings with
+    $container.Settings.PromptUser().  If view settings have already been
+    configured or loaded than data can be displayed directly by calling the
+    $container.Settings.Apply() method.
+    
+    #
+    # Customization
+    #
+    Functionality of the TreeView control can be further extended by passing
+    Definition objects for TreeView, TreeNode(Group), and TreeNode(Data).
+    
+    The definition objects must contain all of the hashtable collections
+    specified in the format, even if the collection is empty.  Otherwise, an
+    error will be thrown during the construction of the objects.
+    
+    The 'Properties' collection of the definition may only contain property
+    names for properties that exist by default on the object as defined by the
+    System.Windows.Forms class of the object.  Similiarly, any value specified
+    for a property must meet the expectations and requirements for the property
+    as defined by the objects .Net class.
+    
+    The 'NoteProperties' collection of the definition cannot contain the same
+    name of an object member that is already defined for the object by it's .Net
+    class.  NoteProperties are *attached* to the object after it's creation by
+    Powershell, and can contain any value.
+    
+    The 'Methods' collection of the definition cannot have the same name as any
+    object members defined by the object's .Net class or any of the previoulsy
+    defined NoteProperties.  The Methods collection expects scriptblocks for
+    values, and will throw an error otherwise.
+    
+    The 'Handlers' collection of the definition may only contain key names of
+    event members of the object as defined by the objects .Net class.  The
+    values for each entry must be a scriptblock.
+    
+    The only difference between the TreeView definition and a TreeNode is
+    the node processors.  A node processor is a scriptblock called against
+    each node during it's creation, allowing the node to be further customized
+    at runtime based on the data associated with the node.  The key name of
+    the processor is only locally significant to the collection itself, and
+    may only contain scriptblocks as values.
+    
+    The NoteProperty names 'Static', 'Source', and 'DataNodes' are part of the
+    SortedTreeView Architecture and may not be used in the NoteProperties
+    collection of a TreeView definition.
+    
+        The TreeView Definition object is constructed by the caller and passed
+        to Initialize-Components -TreeDefinition property.
+        -- Format:
+            [PSCustomObject]@{
+                # [System.Windows.Forms.TreeView] Built-In Properties
+                Properties     = @{}
+                
+                # Powershell Custom NoteProperties
+                NoteProperties = @{}
+                
+                # --- SCRIPTBLOCK VALUES --- #
+                # Powershell ScriptMethod Definitions
+                Methods        = @{}
+                
+                # [System.Windows.Forms.TreeView] Event Handlers
+                Handlers       = @{}
+            }
+            
+        The TreeNode Definition objects for Group nodes and Data nodes use
+        the same definition format.  These definition objects are passed to
+        the -GroupDefinition and -NodeDefinition parameters respectfully.
+         -- Format:
+            [PSCustomObject]@{
+                # [System.Windows.Forms.TreeNode] Built-In Properties
+                Properties     = @{}
+                
+                # Powershell Custom NoteProperties
+                NoteProperties = @{}
+
+                # --- SCRIPTBLOCK VALUES --- #
+                # Powershell ScriptMethod Definitions
+                Methods        = @{}
+
+                # [System.Windows.Forms.TreeNode] Event Handlers
+                Handlers       = @{}
+
+                # Processing Methods. Used to customize a TreeNode during creation.
+                Processors     = @{}
+            }
 
 .NOTES
     Author: Daniel K. Ives
