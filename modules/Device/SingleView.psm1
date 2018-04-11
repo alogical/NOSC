@@ -724,7 +724,7 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
 
             $file = Get-Item $Dialog.FileName
 
-            Send-PTYFile $target $file
+            Send-PuttyFile $target $file
         }
     })))
 
