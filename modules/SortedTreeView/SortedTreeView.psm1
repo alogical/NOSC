@@ -239,29 +239,31 @@ $Static = @{}
 $Static.ProcessDefinition = {
     param([System.Windows.Forms.TreeNode]$Node, [Object]$Record, [Object]$Definition)
 
-    # CUSTOM PRE-PROCESSORS
-    foreach ($processor in $Definition.Processors.Values) {
-        & $processor $Node $Record | Out-Null
-    }
+    if ($Definition) {
+        # CUSTOM PRE-PROCESSORS
+        foreach ($processor in $Definition.Processors.Values) {
+            & $processor $Node $Record | Out-Null
+        }
 
-    # CUSTOM PROPERTIES
-    foreach ($property in $Definition.NoteProperties.GetEnumerator()) {
-        Add-Member -InputObject $Node -MemberType NoteProperty -Name $property.Key -Value $property.Value
-    }
+        # CUSTOM PROPERTIES
+        foreach ($property in $Definition.NoteProperties.GetEnumerator()) {
+            Add-Member -InputObject $Node -MemberType NoteProperty -Name $property.Key -Value $property.Value
+        }
 
-    # BUILT-IN PROPERTIES - late binding (dynamic)
-    foreach ($property in $Definition.Properties.GetEnumerator()) {
-        $Node.($property.Key) = $property.Value
-    }
+        # BUILT-IN PROPERTIES - late binding (dynamic)
+        foreach ($property in $Definition.Properties.GetEnumerator()) {
+            $Node.($property.Key) = $property.Value
+        }
 
-    # CUSTOM METHODS
-    foreach ($method in $Definition.Methods.GetEnumerator()) {
-        Add-Member -InputObject $Node -MemberType ScriptMethod -Name $method.Key -Value $method.Value
-    }
+        # CUSTOM METHODS
+        foreach ($method in $Definition.Methods.GetEnumerator()) {
+            Add-Member -InputObject $Node -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+        }
 
-    # EVENT HANDLERS - late binding (dynamic)
-    foreach ($handler in $Definition.Handlers.GetEnumerator()) {
-        $Node.("Add_$($handler.Key)")($handler.Value)
+        # EVENT HANDLERS - late binding (dynamic)
+        foreach ($handler in $Definition.Handlers.GetEnumerator()) {
+            $Node.("Add_$($handler.Key)")($handler.Value)
+        }
     }
 }
 $Static.TreeNodeChecked = {
@@ -447,24 +449,27 @@ $Static.NewDataBucket = {
             # DEFAULT STATIC METHODS
             Add-Member -InputObject $node -MemberType ScriptMethod -Name SetChecked -Value $Static.TreeNodeChecked
 
-            # CUSTOM PRE-PROCESSORS
-            foreach ($processor in $this.Definition.Processors.Values) {
-                & $processor $node $record | Out-Null
-            }
+            # DEFINITION PROCESSING
+            if ($this.Definition) {
+                # CUSTOM PRE-PROCESSORS
+                foreach ($processor in $this.Definition.Processors.Values) {
+                    & $processor $node $record | Out-Null
+                }
 
-            # CUSTOM PROPERTIES
-            foreach ($property in $this.Definition.NoteProperties.GetEnumerator()) {
-                Add-Member -InputObject $node -MemberType NoteProperty -Name $property.Key -Value $property.Value
-            }
+                # CUSTOM PROPERTIES
+                foreach ($property in $this.Definition.NoteProperties.GetEnumerator()) {
+                    Add-Member -InputObject $node -MemberType NoteProperty -Name $property.Key -Value $property.Value
+                }
 
-            # STANDARD PROPERTIES - late binding (dynamic)
-            foreach ($property in $this.Definition.Properties.GetEnumerator()) {
-                $node.($property.Key) = $property.Value
-            }
+                # BUILT-IN PROPERTIES - late binding (dynamic)
+                foreach ($property in $this.Definition.Properties.GetEnumerator()) {
+                    $node.($property.Key) = $property.Value
+                }
 
-            # CUSTOM METHODS
-            foreach ($method in $this.Definition.Methods.GetEnumerator()) {
-                Add-Member -InputObject $node -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+                # CUSTOM METHODS
+                foreach ($method in $this.Definition.Methods.GetEnumerator()) {
+                    Add-Member -InputObject $node -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+                }
             }
 
             # SHARED BUFFER - Add to quick access ArrayList for all nodes
@@ -745,7 +750,7 @@ function New-TreeViewTab {
         # Object containing the property overrides, event handlers, and custom properties/methods for the TreeView layout container.
         [Parameter(Mandatory = $false)]
             [PSCustomObject]
-            $Definition
+            $Definition = $null
     )
 
     $Container = New-Object System.Windows.Forms.TabPage
@@ -769,34 +774,36 @@ function New-TreeViewTab {
 
     Add-Member -InputObject $TreeView -MemberType NoteProperty -Name DataNodes -Value $null
 
-    ### PROPERTIES ------------------------------------------------------------
-    # Built-In
-    # Late binding (dynamic)
-    foreach ($property in $Definition.Properties.GetEnumerator()) {
-        $TreeView.($property.Key) = $property.Value
-    }
+    if ($Definition) {
+        ### PROPERTIES ------------------------------------------------------------
+        # Built-In
+        # Late binding (dynamic)
+        foreach ($property in $Definition.Properties.GetEnumerator()) {
+            $TreeView.($property.Key) = $property.Value
+        }
 
-    # Custom
-    foreach ($property in $Definition.NoteProperties.GetEnumerator()) {
-        Add-Member -InputObject $TreeView -MemberType NoteProperty -Name $property.Key -Value $property.Value
-    }
+        # Custom
+        foreach ($property in $Definition.NoteProperties.GetEnumerator()) {
+            Add-Member -InputObject $TreeView -MemberType NoteProperty -Name $property.Key -Value $property.Value
+        }
 
-    ### EVENT HANDLERS --------------------------------------------------------
-    # Defaults
-    # Late binding (dynamic)
-    foreach ($handler in $DefaultHandler.GetEnumerator()) {
-        $TreeView."Add_$($handler.Key)"($handler.Value)
-    }
+        ### EVENT HANDLERS --------------------------------------------------------
+        # Defaults
+        # Late binding (dynamic)
+        foreach ($handler in $DefaultHandler.GetEnumerator()) {
+            $TreeView."Add_$($handler.Key)"($handler.Value)
+        }
 
-    # Custom - can override defaults
-    # Late binding (dynamic)
-    foreach ($handler in $Definition.Handlers.GetEnumerator()) {
-        $TreeView."Add_$($handler.Key)"($handler.Value)
-    }
+        # Custom - can override defaults
+        # Late binding (dynamic)
+        foreach ($handler in $Definition.Handlers.GetEnumerator()) {
+            $TreeView."Add_$($handler.Key)"($handler.Value)
+        }
 
-    ### CUSTOM METHODS --------------------------------------------------------
-    foreach ($method in $Definition.Methods.GetEnumerator()) {
-        Add-Member -InputObject $TreeView -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+        ### CUSTOM METHODS --------------------------------------------------------
+        foreach ($method in $Definition.Methods.GetEnumerator()) {
+            Add-Member -InputObject $TreeView -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+        }
     }
 
     ### Return Component Control ----------------------------------------------
