@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Baseline network host device information management.
 
@@ -678,7 +678,7 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
         Open-PuttySSH $target
     })))
 
-    # PUTTY MULTISELECT -------------------------------------------------------
+    ## PUTTY MULTISELECT ------------------------------------------------------
     [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripMenuItem("Multi-PuTTY", $null, {
         param ($sender, $e)
         $menu = $sender.GetCurrentParent()
@@ -705,6 +705,44 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
             }
 
             Open-PuttySSH $target
+        }
+    })))
+
+    ## PSCP -------------------------------------------------------------------
+    [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripMenuItem("pSCP", $null, {
+        param ($sender, $e)
+        $Menu = $sender.GetCurrentParent()
+        [System.Windows.Forms.TreeView] $TreeView = $Menu.SourceControl
+        [System.Windows.Forms.TreeNode] $TreeNode = $TreeView.SelectedNode
+
+        if ($TreeNode.Type -ne 'Data' -or $TreeNode.Tag.Access_Method.ToUpper() -notmatch 'SSH') {
+            [System.Windows.Forms.MessageBox]::Show(
+                ("[{0}] pSCP not supported!" -f $TreeNode.Text),
+                'pSCP Secure Copy',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Exclamation)
+            return
+        }
+
+        $Dialog = New-Object System.Windows.Forms.OpenFileDialog
+
+        <# Fix for dialog script hang bug #>
+        $Dialog.ShowHelp = $false
+
+        # Dialog Configuration
+        $Dialog.Filter = "Text Files (*.txt)|*.txt|IOS Bins (*.bin)|*.bin"
+        $Dialog.Multiselect = $false
+
+        # Run Selection Dialog
+        if($($Dialog.ShowDialog()) -eq "OK") {
+            $target = [PSCustomObject]@{
+            Hostname = $TreeNode.Tag.Device_Hostname
+            IP       = $TreeNode.Tag.ip
+            }
+
+            $file = Get-Item $Dialog.FileName
+
+            Send-PuttyFile $target $file
         }
     })))
 

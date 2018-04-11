@@ -14,6 +14,18 @@ NOSC provides an integrated interface for network management utilities.
     Guide (STIG) checklist automation and graphical interface.
 
 -- CHANGE LOG
+
+    4/11/2018 [DKI] >> Updated Device/SingleView and SortedTreeView
+    * Fixed pscp Send-File function call in SingleView context menu
+    + Expanded the notes for the SortedTreeView
+    ~ Refactored the definition processing to perform sanity checks, ensuring
+      that the definition objects are not null.
+
+    4/10/2018 [DKI] >> pscp Secure Copy Support.
+    + Added Device module context menus.
+    + Added support functions to Putty module.
+    + Expanded SortedTreeView module documentation.
+
     4/10/2018 [DKI] >> Hotfix patch for PuTTY SSH.
     ~ Moved this log out of the nosc.ps1 file.
     + Added SortedTreeView support for callers of the module to add custom note
