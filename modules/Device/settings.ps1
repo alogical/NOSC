@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Settings management form.
 

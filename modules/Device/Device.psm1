@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Baseline network host device information management.
 

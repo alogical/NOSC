@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     PuTTY configuration and session manager.
 
@@ -50,27 +50,63 @@ function Initialize-Components {
 }
 
 function Open-SSH ($Target) {
-    if ($Credential -eq $null) {
-        $Credential = Get-Credential
+    if ($Script:Credential -eq $null) {
+        $Script:Credential = Get-Credential
     }
 
     $profile = Set-RegistryProfile $Target
 
-    $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
-    $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($BSTR)
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
+    $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
     $connect = ("{0} -load `"{1}`" -l {2} -pw `$pw" -f
         $PUTTY,
         $profile,
         $Credential.UserName
     )
     Invoke-Expression $connect
-    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($BSTR)
+    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+}
+
+function Send-File ($Target, $File) {
+    if ($Script:Credential -eq $null) {
+        $Script:Credential = Get-Credential
+    }
+
+    $fname = Split-Path $File.FullName -Leaf
+
+    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Credential.Password)
+    $pw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+    $ConnectString = ("{0} -pw `$pw -scp '{1}' {2}@{3}:flash:'{4}'" -f
+        $PSCP,
+        $File.FullName,
+        $Credential.UserName,
+        $Target.ip,
+        $fname
+    )
+
+    if (![System.IO.File]::Exists($pscp)) {
+        Copy-Item "$NOSC\bin\pscp.exe" $pscp
+    }
+
+    try {
+        Invoke-Expression $ConnectString
+    }
+    catch {
+        [System.Windows.Forms.MessageBox]::Show(
+            "$_",
+            "pSCP Secure File Transfer",
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error)
+    }
+    finally {
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    }
 }
 
 Export-ModuleMember -Function *
 
 # Global Objects
-$Credential = $null
+$Script:Credential = $null
 
 Export-ModuleMember -Variable Credential
 
