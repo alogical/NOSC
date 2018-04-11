@@ -50,8 +50,8 @@ function Initialize-Components {
 }
 
 function Open-SSH ($Target) {
-    if ($Credential -eq $null) {
-        $Credential = Get-Credential
+    if ($Script:Credential -eq $null) {
+        $Script:Credential = Get-Credential
     }
 
     $profile = Set-RegistryProfile $Target
@@ -106,7 +106,7 @@ function Send-File ($Target, $File) {
 Export-ModuleMember -Function *
 
 # Global Objects
-$Credential = $null
+$Script:Credential = $null
 
 Export-ModuleMember -Variable Credential
 
