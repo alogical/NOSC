@@ -15,6 +15,12 @@ NOSC provides an integrated interface for network management utilities.
 
 -- CHANGE LOG
 
+    4/11/2018 [DKI] >> Updated Device/SingleView and SortedTreeView
+    * Fixed pscp Send-File function call in SingleView context menu
+    + Expanded the notes for the SortedTreeView
+    ~ Refactored the definition processing to perform sanity checks, ensuring
+      that the definition objects are not null.
+
     4/10/2018 [DKI] >> pscp Secure Copy Support.
     + Added Device module context menus.
     + Added support functions to Putty module.
