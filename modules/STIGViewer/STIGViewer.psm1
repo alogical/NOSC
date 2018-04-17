@@ -58,32 +58,32 @@ function Get-Viewer {
     #// SWITCH STATEMENT HERE //
     switch -Regex ($STIG) {
         'L2' {
-            $archive = "$Path\$L2_INFRASTRUCTURE_ARCHIVE"
+            $archive = "$InvocationPath\$L2_INFRASTRUCTURE_ARCHIVE"
             $entry = Resolve-ArchivePath $L2_INFRASTRUCURE_SWITCH
         }
 
         'Standard L3' {
-            $archive = "$Path\$L3_INFRASTRUCTURE_ARCHIVE"
+            $archive = "$InvocationPath\$L3_INFRASTRUCTURE_ARCHIVE"
             $entry = Resolve-ArchivePath $L3_INFRASTRUCURE_SWITCH
         }
 
         'Router' {
-            $archive = "$Path\$L3_INFRASTRUCTURE_ARCHIVE"
+            $archive = "$InvocationPath\$L3_INFRASTRUCTURE_ARCHIVE"
             $entry = Resolve-ArchivePath $L3_INFRASTRUCURE_ROUTER
         }
 
         'Perimeter L3' {
-            $archive = "$Path\$L3_PERIMETER_ARCHIVE"
+            $archive = "$InvocationPath\$L3_PERIMETER_ARCHIVE"
             $entry = Resolve-ArchivePath $L3_PERIMETER_SWITCH
         }
 
         'Perimeter/Router' {
-            $archive = "$Path\$L3_PERIMETER_ARCHIVE"
+            $archive = "$InvocationPath\$L3_PERIMETER_ARCHIVE"
             $entry = Resolve-ArchivePath $L3_PERIMETER_ROUTER
         }
 
         'VPN/Router' {
-            $archive = "$Path\$L3_IPSEC_VPN_ARCHIVE"
+            $archive = "$InvocationPath\$L3_IPSEC_VPN_ARCHIVE"
             $entry = Resolve-ArchivePath $L3_IPSEC_VPN_GATEWAY
         }
     }
@@ -102,7 +102,7 @@ Export-ModuleMember -Function *
 ## explicit call to Export-ModuleMember
 ###############################################################################
 ###############################################################################
-$Path  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
+$InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
 
 # BUILD XML DOCUMENT NAME PATH
 function Resolve-ArchivePath ([string]$STIG) {
