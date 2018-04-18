@@ -1,4 +1,16 @@
-﻿Add-Type -TypeDefinition @"
+﻿<#
+.SYNOPSIS
+    Device object data management.
+
+.DESCRIPTION
+    Provides constructors and data management for device data.
+
+.NOTES
+    Author: Daniel K. Ives
+    Email:  daniel.ives@live.com
+#>
+
+Add-Type -TypeDefinition @"
     namespace Device {
         public enum ObjectCategory
         {
@@ -18,7 +30,7 @@
             HTTPS         = 16
         }
 
-        public enum AccessSourceType {
+        public enum AccessSource {
             Hostname,
             Interface
         }
@@ -48,69 +60,21 @@
 "@
 
 ###############################################################################
-## Content Addressable File System Management
-## ------------------------------------------
-## Provides the API for storing objects within and retrieving objects from the
-## content addressable filesystem.
+###############################################################################
+## SECTION 01 ## PUBILC FUNCTIONS AND VARIABLES
+##
+## Pass-thru Export-ModuleMember calls export all functions and variables
+## to the global session that were passed to this modules session from nested
+## modules.
+###############################################################################
 ###############################################################################
 
-$ObjectIndex = [PSCustomObject]@{
-    Device          = $null
-    Interface       = $null
-    Hardware        = $null
-    OperatingSystem = $null
-    Contact         = $null
-}
-
-Add-Member -InputObject $ObjectIndex -MemberType ScriptMethod -Name Load -Value {
-    
-}
-
-function Save-Object {
-    param(
-        # SHA1 of object data.
-        [Parameter(Mandatory = $true)]
-            $InputObject,
-
-        # SHA1 of parent object.
-        [Parameter(Mandatory = $true)]
-        [String]
-            $Parent
-    )
-
-    $json = ConvertTo-Json $InputObject
-
-    $object = @{
-        Name   = $Name
-        Parent = $Parent
-    }
-}
-
-function Load-Index {
-    param(
-        # Root directory of the content addressable files system.
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({[System.IO.Directory]::Exists($_)})]
-        [String]
-            $LiteralPath,
-
-        [Parameter(Mandatory = $true)]
-        [String]
-            $Name
-    )
-
-    $f = Get-Item (Join-Path $LiteralPath $Name)
-
-    if (!$f) {
-        throw (New-Object System.IO.FileNotFoundException("Could not locate index: $Name"))
-    }
-
-    $stream  = $f.OpenText()
-    $content = $stream.ReadToEnd()
-
-    $stream.Close()
-    return ( ConvertFrom-PSObject (ConvertFrom-Json $content) )
-}
+#
+# Content Addressable File System Management
+# ------------------------------------------
+# Provides the API for storing objects within and retrieving objects from the
+# content addressable filesystem.
+#
 
 function Get-Device {
     param(
@@ -162,13 +126,14 @@ function Get-Contact {
 
 }
 
-###############################################################################
-## Content Addressable File System Objects
-## ---------------------------------------
-## These data structures are stored as unique objects with the content
-## addressable filesystem.  They represent basic level objects or relational
-## objects containing information shared between multiple distinct objects.
-###############################################################################
+#
+# Content Addressable File System Objects
+# ---------------------------------------
+# These data structures are stored as unique objects with the content
+# addressable filesystem.  They represent basic level objects or relational
+# objects containing information shared between multiple distinct objects.
+#
+
 function New-Device {
     $base_object = @{
         # Global object identifier.
@@ -196,7 +161,7 @@ function New-Device {
         AccessProtocol      = [Device.AccessProtocol]::None
 
         # Remote management IP address source.
-        AccessSourceType    = [Device.AccessSourceType]::Interface
+        AccessSourceType    = [Device.AccessSource]::Interface
 
         # Add Hardware and if not a virtual system.
         Virtual             = $false
@@ -435,12 +400,13 @@ function New-MultipointTunnel {
     return $tunnel
 }
 
-###############################################################################
-## Content Extension Objects
-## -------------------------
-## These objects extend or are stored inside a collection within a content
-## addressable file system object.  They are never stored as a seperate object.
-###############################################################################
+#
+# Content Extension Objects
+# -------------------------
+# These objects extend or are stored inside a collection within a content
+# addressable file system object.  They are never stored as a seperate object.
+#
+
 function New-SerialNumber {
     $serial = @{
         # Serial number.
@@ -482,12 +448,23 @@ function New-InterfaceCollection {
     return $collection
 }
 
+Export-ModuleMember *
+
 ###############################################################################
-## Object Conversion Utilities
-## ---------------------------
-## These functions provide conversion from stored data to in memory nested data
-## structures.
 ###############################################################################
+## SECTION 02 ## PRIVATE FUNCTIONS AND VARIABLES
+##
+## No function or variable in this section is exported unless done so by an
+## explicit call to Export-ModuleMember
+###############################################################################
+###############################################################################
+
+#
+# Object Conversion Utilities
+# ---------------------------
+# These functions provide conversion from stored data to in memory nested data
+# structures.
+#
 function ConvertFrom-PSObject {
     param(
         [Parameter(Mandatory         = $false,
@@ -519,4 +496,42 @@ function ConvertFrom-PSObject {
             Write-Output $InputObject
         }
     }
+}
+
+function New-SecureHashProvider {
+    $provider = New-Object System.Security.Cryptography.SHA1CryptoServiceProvider
+
+    Add-Member -InputObject $provider -MemberType ScriptMethod -Name HashFile -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [System.IO.FileInfo]
+                $File
+        )
+        $reader = [System.IO.StreamReader]$File.FullName
+        [void] $this.ComputeHash( $reader.BaseStream )
+
+        $reader.Close()
+
+        return $this.OutString
+    }
+
+    Add-Member -InputObject $provider -MemberType ScriptMethod -Name HashString -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [String]
+                $InputString
+        )
+
+        $buffer = [System.Text.UnicodeEncoding]::UTF8.GetBytes($InputString)
+        $this.ComputeHash($buffer)
+
+        return $this.OutString
+    }
+
+    Add-Member -InputObject $provider -MemberType ScriptProperty -Name OutString -Value {
+        $hash = $this.Hash | %{"{0:x2}" -f $_}
+        return ($hash -join "")
+    }
+
+    return $provider
 }

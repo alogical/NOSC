@@ -16,11 +16,11 @@ Add-Type -AssemblyName System.Windows.Forms
 
 #$DebugPreference = 'Continue'
 
-$ModuleInvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
-Import-Module "$ModuleInvocationPath\modules\Putty\Putty.psm1" -Prefix Putty
-Import-Module "$ModuleInvocationPath\modules\STIGViewer\STIGViewer.psm1"
-Import-Module "$ModuleInvocationPath\modules\Compliance\Compliance.psm1" -Prefix Compliance
-Import-Module "$ModuleInvocationPath\modules\Device\Device.psm1" -Prefix Device
+$Global:AppPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
+Import-Module "$AppPath\modules\Putty\Putty.psm1" -Prefix Putty
+Import-Module "$AppPath\modules\STIGViewer\STIGViewer.psm1"
+Import-Module "$AppPath\modules\Compliance\Compliance.psm1" -Prefix Compliance
+Import-Module "$AppPath\modules\Device\Device.psm1" -Prefix Device
 
 $OnLoad = New-Object System.Collections.ArrayList
 
