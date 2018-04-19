@@ -24,7 +24,7 @@ namespace VersionControl {
 }
 "@
 
-Import-Module "$AppPath\modules\AddressableFileSystem\AddressableFileSystem.psm1"
+Import-Module "$AppPath\modules\VersionControl\FileSystem.psm1"
 
 ###############################################################################
 ###############################################################################
@@ -48,7 +48,11 @@ Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Stage -Value 
             $File
     )
 
-
+    $entry = New-Entry
+    $entry.Name = $FileSystem.Hash($File)
+    $entry.Size = $File.Length
+    $entry.cTime = $File.CreationTimeUtc
+    $entry.mTime = $File.LastWriteTimeUtc
 }
 
 Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value {
@@ -319,22 +323,22 @@ function New-CachedTree {
 function New-Entry {
     $entry = @{
         # SHA1 Identifer of the blob object for this file.
-        Name         = [String]::Empty
+        Name  = [String]::Empty
 
         # Object type.
-        Type         = [VersionControl.DAG.ObjectType]::TreeEntry
+        Type  = [VersionControl.DAG.ObjectType]::TreeEntry
 
         # Size on disk of the file, truncated to 32-bit.
-        Size         = [Int32]0
+        Size  = [Int32]0
 
         # Time the file was created.
-        CreatedTime  = [UInt32]0
+        cTime = [UInt32]0
 
         # Time the file was last modified.
-        ModifiedTime = [UInt32]0
+        mTime = [UInt32]0
 
         # Relative path of the file from the root of the working directory.
-        Path         = [String]::Empty
+        Path  = [String]::Empty
     }
     return $entry
 }
