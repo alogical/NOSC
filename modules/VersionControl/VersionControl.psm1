@@ -37,7 +37,13 @@ Import-Module "$AppPath\modules\VersionControl\FileSystem.psm1"
 ###############################################################################
 
 $Repository = [PSCustomObject]@{
+    # Branch index object.
     Index = $null
+
+    # The working directory file path.
+    WorkingDirectory = [String]::Empty
+
+    # The most recent commit object id for this branch.
     HEAD  = [String]::Empty
 }
 
@@ -53,6 +59,9 @@ Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Stage -Value 
     $entry.Size = $File.Length
     $entry.cTime = $File.CreationTimeUtc
     $entry.mTime = $File.LastWriteTimeUtc
+    $entry.Path  = $File.FullName -replace [System.Text.RegularExpressions.Regex]::Escape($this.WorkingDirectory), [String]::Empty
+
+    $this.Index.Entries.Add($entry)
 }
 
 Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value {
@@ -83,31 +92,36 @@ Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value
     return $FileSystem.Write( (ConvertTo-Json $commit) )
 }
 
-function Load-Tree {
+Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetLocation -Value {
     param(
-        # Root directory of the content addressable files system.
+        # Working directory path.
         [Parameter(Mandatory = $true)]
         [ValidateScript({[System.IO.Directory]::Exists($_)})]
         [String]
-            $LiteralPath,
-
-        # SHA1 name of index tree.
-        [Parameter(Mandatory = $true)]
-        [String]
-            $Name
+            $LiteralPath
     )
 
-    $f = Get-Item (Join-Path $LiteralPath $Name)
+    $this.WorkingTree = $LiteralPath
 
-    if (!$f) {
-        throw (New-Object System.IO.FileNotFoundException("Could not locate index: $Name"))
+    # Repository directory path
+    $data_path = Join-Path $LiteralPath .vc
+
+    # Index file path
+    $idx_path  = Join-Path $data_path index
+
+    # HEAD file path
+    $head_path = Join-Path $data_path HEAD
+
+    # File system object storage directory path
+    $fs_path   = Join-Path $data_path objects
+    
+    if (!$FileSystem.SetLocation($fs_path))
+    {
+        # Abort
+        Write-Debug 'Directory has not been initialized as a repository.'
     }
 
-    $stream  = $f.OpenText()
-    $content = $stream.ReadToEnd()
-
-    $stream.Close()
-    return ( ConvertFrom-PSObject (ConvertFrom-Json $content) )
+    $this.Index.Load($idx_path)
 }
 
 Export-ModuleMember *
