@@ -22,8 +22,7 @@
 
 $FileSystem = [PSCustomObject]@{
     # File System Info
-    Directory  = $null
-    ObjectPath = $null
+    ObjectPath  = $null
     ShaProvider = Get-SecureHashProvider
 }
 
@@ -34,11 +33,9 @@ Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name SetLocation -
             $LiteralPath
     )
 
-    $this.Directory  = Join-Path $LiteralPath .cafs
-    $this.ObjectPath = Join-Path $LiteralPath objects
+    $this.ObjectPath = $LiteralPath
 
-    if (![System.IO.Directory]::Exists($this.Directory) -or
-        ![System.IO.Directory]::Exists($this.ObjectPath) )
+    if (![System.IO.Directory]::Exists($this.ObjectPath) )
     {
         return $false
     }
@@ -55,7 +52,6 @@ Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name InitLocation 
 
     # Returns the directories created | NULL
     if (!$this.SetLocation($LiteralPath)) {
-        New-Item $this.Directory  -ItemType Directory
         New-Item $this.ObjectPath -ItemType Directory
     }
 }
@@ -89,15 +85,13 @@ Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name Write -Value 
 
     $name = $this.Hash($InputObject)
 
-    $object_cache = $name.Substring(0, 2)
-    $object_file  = $name.Substring(2, 38)
+    $object_path = $this.ResolvePath($name)
+    $object_cache = Split-Path $object_path -Parent
 
-    $object_cache_path = Join-Path $this.ObjectPath $object_cache
-    if (![System.IO.Directory]::Exists($object_cache_path)) {
-        [void][System.IO.Directory]::CreateDirectory($object_cache_path)
+    if (![System.IO.Directory]::Exists($object_cache)) {
+        [void]([System.IO.Directory]::CreateDirectory($object_cache))
     }
 
-    $object_path  = Join-Path $object_cache_path $object_file
     ConvertTo-Json $blob > $object_path
 
     return $name
@@ -105,16 +99,47 @@ Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name Write -Value 
 
 Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name Get -Value {
     param(
-        # Data to be turned into a blob.
+        # Name of object to be returned.
         [Parameter(Mandatory = $true)]
             $Name
     )
+    return (Get-Item $this.ResolvePath($Name))
+}
 
-    $object_cache = $name.Substring(0, 2)
-    $object_file  = $name.Substring(2, 38)
-    $object_path  = Join-Path $object_cache_path $object_file
+Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name Remove -Value {
+param(
+        # Name of object to be deleted.
+        [Parameter(Mandatory = $true)]
+            $Name
+    )
+    $object_path = $this.ResolvePath($Name)
+    $cache_path  = Split-Path $object_path -Parent
+    Remove-Item $object_path
 
-    return (Get-Item $object_path)
+    if ( !(Get-ChildItem $cache_path) )
+    {
+        Remove-Item $cache_path
+    }
+}
+
+Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name Exists -Value {
+    param(
+        # SHA1 identifier of the object blob being checked.
+        [Parameter(Mandatory = $true)]
+            $Name
+    )
+    return [System.IO.File]::Exists( $this.ResolvePath($Name) )
+}
+
+Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name ResolvePath -Value {
+    param(
+        # SHA1 identifier of the object blob being checked.
+        [Parameter(Mandatory = $true)]
+            $Name
+    )
+    $object_cache = $Name.Substring(0, 2)
+    $object_file  = $Name.Substring(2, 38)
+    return ( Join-Path $this.ObjectPath (Join-Path $object_cache $object_file) )
 }
 
 Export-ModuleMember *

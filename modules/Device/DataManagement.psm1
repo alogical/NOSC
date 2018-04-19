@@ -459,6 +459,9 @@ Export-ModuleMember *
 ###############################################################################
 ###############################################################################
 
+Import-Module "$AppPath\modules\DirectedAcyclicGraph\DirectedAcyclicGraph.psm1"
+Import-Module "$AppPath\modules\AddressableFileSystem\AddressableFileSystem.psm1"
+
 #
 # Object Conversion Utilities
 # ---------------------------
