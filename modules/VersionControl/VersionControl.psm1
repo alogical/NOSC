@@ -11,20 +11,16 @@
 #>
 Add-Type -TypeDefinition @"
 namespace VersionControl {
-    namespace DAG {
+    namespace Repository {
         public enum ObjectType {
             Blob,
             Commit,
             Tree,
-            TreeEntry
-            TreeCache,
             Tag
         }
     }
 }
 "@
-
-Import-Module "$AppPath\modules\VersionControl\FileSystem.psm1"
 
 ###############################################################################
 ###############################################################################
@@ -87,7 +83,7 @@ Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value
     $commit.Parents = $this.HEAD
     $commit.Author  = $Author
     $commit.Message = $Message
-    $commit.Tree    = Build-Commit $this.Index.Entries $this.Index.TREE
+    $commit.Tree    = Build-Commit $this.Index.idx.Entries $this.Index.idx.TREE
 
     return $FileSystem.Write( (ConvertTo-Json $commit) )
 }
@@ -134,6 +130,9 @@ Export-ModuleMember *
 ## explicit call to Export-ModuleMember
 ###############################################################################
 ###############################################################################
+
+Import-Module "$AppPath\modules\VersionControl\FileSystem.psm1"
+Import-Module "$AppPath\modules\VersionControl\Index.psm1"
 
 $InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
 
@@ -183,7 +182,7 @@ function Build-Commit {
     $root.Entries = $walked.root
 
     # Recursively build subtrees
-    foreach ($cache in $TreeCache)
+    foreach ($cache in $TreeCache.Subtrees)
     {
         # Cached tree validation check.  If the cached tree is valid than the
         # tree hasn't been modified, and the tree object already exists in the
@@ -273,7 +272,7 @@ function New-Commit {
 function New-Tree {
     $tree = @{
         # Object type.
-        Type  = [VersionControl.DAG.ObjectType]::Tree
+        Type  = [VersionControl.Repository.ObjectType]::Tree
 
         # Relative path of this tree from it's parent.
         Path  = [String]::Empty
@@ -298,36 +297,6 @@ function New-Tree {
 
 <#
 .SYNOPSIS
-    Cached tree object.
-
-.DESCRIPTION
-    Cached tree extension contains pre-computed hashes for trees that can be derived
-    from the index.  It helps speed up tree object generation from index for a new
-    commit.
-#>
-function New-CachedTree {
-    $tree = @{
-        # SHA1 Identifier.
-        Name     = [String]::Empty
-        
-        # Object type.
-        Type     = [VersionControl.DAG.ObjectType]::TreeCache
-
-        # Relative path of this tree from it's parent.
-        Path     = [String]::Empty
-
-        # Number of entries contained by this tree.
-        #  If count is -1 than the tree is in an invalidated state.
-        Count    = [Int32]0
-
-        # Subtrees contained by this tree.
-        Subtrees = New-Object System.Collections.ArrayList
-    }
-    return $tree
-}
-
-<#
-.SYNOPSIS
     An index representation of a tracked file.
 
 .DESCRIPTION
@@ -340,7 +309,7 @@ function New-Entry {
         Name  = [String]::Empty
 
         # Object type.
-        Type  = [VersionControl.DAG.ObjectType]::TreeEntry
+        Type  = [VersionControl.Repository.Index.ObjectType]::Entry
 
         # Size on disk of the file, truncated to 32-bit.
         Size  = [Int32]0
