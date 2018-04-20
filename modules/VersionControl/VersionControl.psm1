@@ -37,196 +37,207 @@ namespace VersionControl {
 ###############################################################################
 ###############################################################################
 
-$Repository = [PSCustomObject]@{
-    # Branch index object.
-    Index = $null
+function New-vcRepository {
+    $Repository = [PSCustomObject]@{
+        # Branch index object.
+        Index = New-Index
 
-    # The working directory file path.
-    WorkingDirectory = [String]::Empty
+        # The working directory file path.
+        WorkingDirectory = [String]::Empty
 
-    # The repository sub file system.
-    Repository       = [String]::Empty
+        # The repository sub file system.
+        Repository       = [String]::Empty
 
-    # The most recent commit object id for this branch.
-    HEAD  = [String]::Empty
-}
-
-Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetLocation -Value {
-    param(
-        # Working directory path.
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({[System.IO.Directory]::Exists($_)})]
-        [String]
-            $LiteralPath
-    )
-
-    $this.WorkingTree = $LiteralPath
-
-    # Repository directory path
-    $data_path = Join-Path $LiteralPath .vc
-    $this.Repository = $data_path
-
-    # Index file path
-    $idx_path  = Join-Path $data_path index
-
-    # HEAD file path
-    $head_path = Join-Path $data_path HEAD
-
-    # File system object storage directory path
-    $fs_path   = Join-Path $data_path objects
-
-    if (!$FileSystem.SetLocation($fs_path))
-    {
-        # Abort
-        Write-Debug 'Directory is not initialized as a repository.'
-        return
+        # The most recent commit object id for this branch.
+        HEAD  = [String]::Empty
     }
 
-    $this.HEAD = Get-Content $head_path
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetLocation -Value {
+        param(
+            # Working directory path.
+            [Parameter(Mandatory = $true)]
+            [ValidateScript({[System.IO.Directory]::Exists($_)})]
+            [String]
+                $LiteralPath
+        )
 
-    $this.Index.Load($idx_path)
-}
+        $this.WorkingDirectory = $LiteralPath
 
-Add-Member -InputObject $Repository -MemberType ScriptMethod -Name InitLocation -Value {
-    param(
-        [Parameter(Mandatory = $true)]
-        [String]
-            $LiteralPath
-    )
-    # Repository directory path
-    $data_path = Join-Path $LiteralPath .vc
+        # Repository directory path
+        $data_path = Join-Path $LiteralPath .vc
+        $this.Repository = $data_path
 
-    # Index file path
-    $idx_path  = Join-Path $data_path index
+        # Index file path
+        $idx_path  = Join-Path $data_path index
 
-    # HEAD file path
-    $head_path = Join-Path $data_path HEAD
+        # HEAD file path
+        $head_path = Join-Path $data_path HEAD
 
-    # File system object storage directory path
-    $fs_path   = Join-Path $data_path objects
+        # File system object storage directory path
+        $fs_path   = Join-Path $data_path objects
 
-    # Returns the directories created | NULL
-    New-Item $data_path -ItemType Directory
-    $d = New-Item (Join-Path $data_path refs)     -ItemType Directory
-    $h = New-Item (Join-Path $d.FullName heads)   -ItemType Directory
-        '0000000000000000000000000000000000000000' > (Join-Path $h.FullName master)
-         New-Item (Join-Path $d.FullName remotes) -ItemType Directory
-         New-Item (Join-Path $d.FullName tags)    -ItemType Directory
-
-    $d = New-Item (Join-Path $d.FullName logs)    -ItemType Directory
-        [String]::Empty > (Join-Path $d.FullName HEAD)
-    $d = New-Item (Join-Path $d.FullName refs)    -ItemType Directory
-         New-Item (Join-Path $d.FullName heads)   -ItemType Directory
-         New-Item (Join-Path $d.FullName remotes) -ItemType Directory
-
-    # Initialize the content addressable file system.
-    New-Item $FileSystem.InitLocation($fs_path)
-    $this.Index.Init($data_path)
-
-    'ref: refs/heads/master' > (Join-Path $data_path HEAD)
-
-    if (!$this.SetLocation($LiteralPath)) {
-        throw (New-Object System.IO.DirectoryNotFoundException("Failed to initialize: $LiteralPath"))
-    }
-}
-
-Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Status -Value {
-    $files    = Get-ChildItem -LiteralPath $this.WorkingDirectory -Recurse -File
-    $modified = @{}
-
-    $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingTree + '\') )
-
-    foreach ($file in $files)
-    {
-        $rel_path = $file.FullName -replace $path_filter, [String]::Empty
-        if ($this.Index.Cache.Contains($rel_path))
+        if (!$FileSystem.SetLocation($fs_path))
         {
-            $entry = $this.Index.Cache[$rel_path]
-            if ($this.Compare($file, $entry) - [VersionControl.Repository.CompareResult]::Modified)
+            # Abort
+            Write-Debug 'Directory is not initialized as a repository.'
+            return
+        }
+
+        $this.HEAD = Get-Content $head_path
+
+        if ([System.IO.File]::Exists($idx_path))
+        {
+            $this.Index.Load($idx_path)
+        }
+        else
+        {
+            $this.Index.Init($data_path)
+        }
+
+        return $true
+    }
+
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Init -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [ValidateScript({[System.IO.Directory]::Exists($_)})]
+            [String]
+                $LiteralPath
+        )
+        # Repository directory path
+        $data_path = Join-Path $LiteralPath .vc
+
+        # Index file path
+        $idx_path  = Join-Path $data_path index
+
+        # HEAD file path
+        $head_path = Join-Path $data_path HEAD
+
+        # File system object storage directory path
+        $fs_path   = Join-Path $data_path objects
+
+        # Returns the directories created | NULL
+        New-Item $data_path -ItemType Directory
+        $d = New-Item (Join-Path $data_path refs)     -ItemType Directory
+        $h = New-Item (Join-Path $d.FullName heads)   -ItemType Directory
+            '0000000000000000000000000000000000000000' > (Join-Path $h.FullName master)
+             New-Item (Join-Path $d.FullName remotes) -ItemType Directory
+             New-Item (Join-Path $d.FullName tags)    -ItemType Directory
+
+        $d = New-Item (Join-Path $data_path logs)    -ItemType Directory
+            [String]::Empty > (Join-Path $d.FullName HEAD)
+        $d = New-Item (Join-Path $d.FullName refs)    -ItemType Directory
+             New-Item (Join-Path $d.FullName heads)   -ItemType Directory
+             New-Item (Join-Path $d.FullName remotes) -ItemType Directory
+
+        # Initialize the content addressable file system.
+        New-Item $FileSystem.Init($fs_path)
+        'ref: refs/heads/master' > (Join-Path $data_path HEAD)
+
+        if (!$this.SetLocation($LiteralPath)) {
+            throw (New-Object System.IO.DirectoryNotFoundException("Failed to initialize: $LiteralPath"))
+        }
+    }
+
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Status -Value {
+        $files    = Get-ChildItem -LiteralPath $this.WorkingDirectory -Recurse -File
+        $modified = @{}
+
+        $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingTree + '\') )
+
+        foreach ($file in $files)
+        {
+            $rel_path = $file.FullName -replace $path_filter, [String]::Empty
+            if ($this.Index.Cache.Contains($rel_path))
             {
-                $modified.Add($rel_path, @{
-                        Entry = $entry
-                        File  = $file
-                    }
-                )
+                $entry = $this.Index.Cache[$rel_path]
+                if ($this.Compare($file, $entry) - [VersionControl.Repository.CompareResult]::Modified)
+                {
+                    $modified.Add($rel_path, @{
+                            Entry = $entry
+                            File  = $file
+                        }
+                    )
+                }
             }
         }
     }
+
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Compare -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [System.IO.FileInfo]
+                $File,
+
+            [Parameter(Mandatory = $true)]
+            [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
+            [Hashtable]
+                $Entry
+        )
+        return (Compare-Entry @PSBoundParameters)
+    }
+
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Stage -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [System.IO.FileInfo]
+                $File
+        )
+
+        $entry = New-Entry
+        $entry.Name   = $FileSystem.Hash($File)
+        $entry.Length = $File.Length
+        $entry.cTime  = $File.CreationTimeUtc
+        $entry.mTime  = $File.LastWriteTimeUtc
+        $entry.Path   = $File.FullName -replace [System.Text.RegularExpressions.Regex]::Escape($this.WorkingDirectory), [String]::Empty
+
+        $this.Index.Add($entry)
+    }
+
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name UnStage -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [System.IO.FileInfo]
+                $File
+        )
+
+        $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingDirectory + '\') )
+        $rel_path    = $File.FullName -replace $path_filter, [String]::Empty
+
+        return $this.Index.Remove($this.Index.Cache[$rel_path])
+    }
+
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [System.Collections.ArrayList]
+                $Parents,
+
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Author,
+
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Message,
+
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Tree
+        )
+
+        $commit = New-Commit
+        $commit.Parents = $this.HEAD
+        $commit.Author  = $Author
+        $commit.Message = $Message
+        $commit.Tree    = Build-Commit $this.Index.Entries $this.Index.TREE
+
+        return $FileSystem.Write( (ConvertTo-Json $commit) )
+    }
+
+    return $Repository
 }
-
-Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Compare -Value {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.IO.FileInfo]
-            $File,
-
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
-        [Hashtable]
-            $Entry
-    )
-    return (Compare-Entry @PSBoundParameters)
-}
-
-Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Stage -Value {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.IO.FileInfo]
-            $File
-    )
-
-    $entry = New-Entry
-    $entry.Name   = $FileSystem.Hash($File)
-    $entry.Length = $File.Length
-    $entry.cTime  = $File.CreationTimeUtc
-    $entry.mTime  = $File.LastWriteTimeUtc
-    $entry.Path   = $File.FullName -replace [System.Text.RegularExpressions.Regex]::Escape($this.WorkingDirectory), [String]::Empty
-
-    $this.Index.Add($entry)
-}
-
-Add-Member -InputObject $Repository -MemberType ScriptMethod -Name UnStage -Value {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.IO.FileInfo]
-            $File
-    )
-
-    $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingDirectory + '\') )
-    $rel_path    = $File.FullName -replace $path_filter, [String]::Empty
-
-    return $this.Index.Remove($this.Index.Cache[$rel_path])
-}
-
-Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.Collections.ArrayList]
-            $Parents,
-
-        [Parameter(Mandatory = $true)]
-        [String]
-            $Author,
-
-        [Parameter(Mandatory = $true)]
-        [String]
-            $Message,
-
-        [Parameter(Mandatory = $true)]
-        [String]
-            $Tree
-    )
-
-    $commit = New-Commit
-    $commit.Parents = $this.HEAD
-    $commit.Author  = $Author
-    $commit.Message = $Message
-    $commit.Tree    = Build-Commit $this.Index.Entries $this.Index.TREE
-
-    return $FileSystem.Write( (ConvertTo-Json $commit) )
-}
-
-Export-ModuleMember *
+Export-ModuleMember -Function *
 
 ###############################################################################
 ###############################################################################
@@ -237,8 +248,8 @@ Export-ModuleMember *
 ###############################################################################
 ###############################################################################
 
-Import-Module ".\FileSystem.psm1"
-Import-Module ".\Index.psm1"
+Import-Module "$AppPath\modules\VersionControl\FileSystem.psm1"
+Import-Module "$AppPath\modules\VersionControl\Index.psm1"
 
 $InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
 

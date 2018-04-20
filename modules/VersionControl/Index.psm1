@@ -31,141 +31,137 @@ namespace VersionControl.Repository {
 ###############################################################################
 ###############################################################################
 
-$Index = [PSCustomObject]@{
-    idx   = $null
-    Cache = @{}
-    Path  = [String]::Empty
-}
-
-Add-Member -InputObject $Index -MemberType ScriptMethod -Name Init -Value {
-    param(
-        # Index file path.
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({[System.IO.Directory]::Exists($_)})]
-        [String]
-            $LiteralPath
-    )
-
-    $Index.idx  = New-Index
-    $Index.idx.HEAD = '0000000000000000000000000000000000000000'
-
-    $Index.Path = Join-Path $LiteralPath index
-    $Index.Write()
-}
-
-Add-Member -InputObject $Index -MemberType ScriptMethod -Name Load -Value {
-    param(
-        # Index file path.
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({[System.IO.Directory]::Exists($_)})]
-        [String]
-            $LiteralPath
-    )
-
-    ConvertTo-Json $this.idx > $this.Path
-}
-
-Add-Member -InputObject $Index -MemberType ScriptMethod -Name Load -Value {
-    param(
-        # Index file path.
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({[System.IO.Directory]::Exists($_)})]
-        [String]
-            $LiteralPath
-    )
-
-    $f = Get-Item $LiteralPath
-
-    if (!$f) {
-        throw (New-Object System.IO.FileNotFoundException("Could not locate index"))
+function New-Index {
+    $Index = [PSCustomObject]@{
+        idx   = $null
+        Cache = @{}
+        Path  = [String]::Empty
     }
 
-    $stream  = $f.OpenText()
-    $content = $stream.ReadToEnd()
-    $stream.Close()
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name Init -Value {
+        param(
+            # Index file path.
+            [Parameter(Mandatory = $true)]
+            [ValidateScript({[System.IO.Directory]::Exists($_)})]
+            [String]
+                $LiteralPath
+        )
 
-    $this.idx = ConvertFrom-PSObject (ConvertFrom-Json $content)
+        $this.idx  = New-PrivateIndex
+        $this.idx.HEAD = '0000000000000000000000000000000000000000'
 
-    $this.RefreshCache()
-
-    return $this.idx.HEAD
-}
-
-Add-Member -InputObject $Index -MemberType ScriptMethod -Name LoadCommit -Value {
-    param(
-        # A commit tree.
-        [Parameter(Mandatory = $true)]
-        [Object]
-            $Commit
-    )
-
-    $this.idx = New-Index
-    $this.idx.TREE   = ConvertTo-CacheTree $Commit.Tree
-    $this.idx.Entries = Build-Cache $Commit.Tree $this.idx.TREE
-
-    $this.RefreshCache()
-}
-
-Add-Member -InputObject $Index -MemberType ScriptMethod -Name RefreshCache -Value {
-    $cache = $this.Cache
-    if ($cache.Count -gt 0)
-    {
-        $cache.Clear()
-    }
-    foreach ($entry in $this.idx.Entries)
-    {
-        $cache.Add($entry.Path, $entry)
-    }
-}
-
-Add-Member -InputObject $Index -MemberType ScriptMethod -Name Add -Value {
-    param(
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
-        [Hashtable]
-            $InputObject
-    )
-    # Cache the object
-    if (!$this.Cache.Contains($InputObject.Path))
-    {
-        $this.Cache.Add($InputObject.Path, $InputObject)
-    }
-    return $this.idx.Entries.Add($InputObject)
-}
-
-Add-Member -InputObject $Index -MemberType ScriptMethod -Name Remove -Value {
-    param(
-        [Parameter(Mandatory = $true,
-                   ParameterSetName = 'Object')]
-        [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
-        [Hashtable]
-            $InputObject,
-
-        [Parameter(Mandatory = $true,
-                   ParameterSetName = 'Index')]
-        [Int]
-            $Index
-    )
-    if ($InputObject)
-    {
-        [void]$this.idx.Entries.Remove($InputObject)
-    }
-    else
-    {
-        $InputObject = $this.idx.Entries[$Index]
-        [void]$this.idx.Entries.RemoveAt($Index)
+        $this.Path = Join-Path $LiteralPath index
+        $this.Write()
     }
 
-    # Cache Management
-    $this.Cache.Remove($InputObject.Path)
-}
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name Write -Value {
+        ConvertTo-Json $this.idx > $this.Path
+    }
 
-Add-Member -InputObject $Index -MemberType ScriptProperty -Name Entries -Value {
-    return $this.idx.Entries
-}
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name Load -Value {
+        param(
+            # Index file path.
+            [Parameter(Mandatory = $true)]
+            [ValidateScript({[System.IO.File]::Exists($_)})]
+            [String]
+                $LiteralPath
+        )
 
-Add-Member -InputObject $Index -MemberType ScriptProperty -Name TREE -Value {
-    return $this.idx.TREE
+        $f = Get-Item $LiteralPath
+
+        if (!$f) {
+            throw (New-Object System.IO.FileNotFoundException("Could not locate index"))
+        }
+
+        $stream  = $f.OpenText()
+        $content = $stream.ReadToEnd()
+        $stream.Close()
+
+        $this.idx = ConvertFrom-PSObject (ConvertFrom-Json $content)
+
+        $this.RefreshCache()
+
+        return $this.idx.HEAD
+    }
+
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name LoadCommit -Value {
+        param(
+            # A commit tree.
+            [Parameter(Mandatory = $true)]
+            [Object]
+                $Commit
+        )
+
+        $this.idx = New-PrivateIndex
+        $this.idx.TREE   = ConvertTo-CacheTree $Commit.Tree
+        $this.idx.Entries = Build-Cache $Commit.Tree $this.idx.TREE
+
+        $this.RefreshCache()
+    }
+
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name RefreshCache -Value {
+        $cache = $this.Cache
+        if ($cache.Count -gt 0)
+        {
+            $cache.Clear()
+        }
+        foreach ($entry in $this.idx.Entries)
+        {
+            $cache.Add($entry.Path, $entry)
+        }
+    }
+
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name Add -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+            [Hashtable]
+                $InputObject
+        )
+        # Cache the object
+        if (!$this.Cache.Contains($InputObject.Path))
+        {
+            $this.Cache.Add($InputObject.Path, $InputObject)
+        }
+        return $this.idx.Entries.Add($InputObject)
+    }
+
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name Remove -Value {
+        param(
+            [Parameter(Mandatory = $true,
+                       ParameterSetName = 'Object')]
+            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+            [Hashtable]
+                $InputObject,
+
+            [Parameter(Mandatory = $true,
+                       ParameterSetName = 'Index')]
+            [Int]
+                $Index
+        )
+        if ($InputObject)
+        {
+            [void]$this.idx.Entries.Remove($InputObject)
+        }
+        else
+        {
+            $InputObject = $this.idx.Entries[$Index]
+            [void]$this.idx.Entries.RemoveAt($Index)
+        }
+
+        # Cache Management
+        $this.Cache.Remove($InputObject.Path)
+    }
+
+    Add-Member -InputObject $Index -MemberType ScriptProperty -Name Entries -Value {
+        return $this.idx.Entries
+    }
+
+    Add-Member -InputObject $Index -MemberType ScriptProperty -Name TREE -Value {
+        return $this.idx.TREE
+    }
+
+    return $Index
 }
 
 #
@@ -206,7 +202,7 @@ function New-Entry {
     return $entry
 }
 
-Export-ModuleMember *
+Export-ModuleMember -Function *
 
 ###############################################################################
 ###############################################################################
@@ -219,7 +215,7 @@ Export-ModuleMember *
 
 $InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
 
-function New-Index {
+function New-PrivateIndex {
     $idx = @{
         # Collection of entries representing tracked files in the working directory.
         Entries = New-Object System.Collections.ArrayList

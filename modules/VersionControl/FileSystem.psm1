@@ -43,7 +43,7 @@ Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name SetLocation -
     return $true
 }
 
-Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name InitLocation -Value {
+Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name Init -Value {
     param(
         [Parameter(Mandatory = $true)]
         [String]
@@ -142,7 +142,7 @@ Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name ResolvePath -
     return ( Join-Path $this.ObjectPath (Join-Path $object_cache $object_file) )
 }
 
-Export-ModuleMember *
+Export-ModuleMember -Variable FileSystem
 
 ###############################################################################
 ###############################################################################
