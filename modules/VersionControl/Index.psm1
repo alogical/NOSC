@@ -32,8 +32,9 @@ namespace VersionControl.Repository {
 ###############################################################################
 
 $Index = [PSCustomObject]@{
-    idx  = $null
-    Path = [String]::Empty
+    idx   = $null
+    Cache = @{}
+    Path  = [String]::Empty
 }
 
 Add-Member -InputObject $Index -MemberType ScriptMethod -Name Load -Value {
@@ -57,10 +58,12 @@ Add-Member -InputObject $Index -MemberType ScriptMethod -Name Load -Value {
 
     $this.idx = ConvertFrom-PSObject (ConvertFrom-Json $content)
 
+    $this.RefreshCache()
+
     return $this.idx.HEAD
 }
 
-Add-Member -InputObject $Index -MemberType ScriptMethod -Name Checkout -Value {
+Add-Member -InputObject $Index -MemberType ScriptMethod -Name LoadCommit -Value {
     param(
         # A commit tree.
         [Parameter(Mandatory = $true)]
@@ -69,8 +72,72 @@ Add-Member -InputObject $Index -MemberType ScriptMethod -Name Checkout -Value {
     )
 
     $this.idx = New-Index
-    $this.idx.Cache   = ConvertTo-CacheTree $Commit.Tree
-    $this.idx.Entries = Build-Cache $Commit.Tree $this.idx.Cache
+    $this.idx.TREE   = ConvertTo-CacheTree $Commit.Tree
+    $this.idx.Entries = Build-Cache $Commit.Tree $this.idx.TREE
+
+    $this.RefreshCache()
+}
+
+Add-Member -InputObject $Index -MemberType ScriptMethod -Name RefreshCache -Value {
+    $cache = $this.Cache
+    if ($cache.Count -gt 0)
+    {
+        $cache.Clear()
+    }
+    foreach ($entry in $this.idx.Entries)
+    {
+        $cache.Add($entry.Path, $entry)
+    }
+}
+
+Add-Member -InputObject $Index -MemberType ScriptMethod -Name AddEntry -Value {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+        [Hashtable]
+            $InputObject
+    )
+    # Cache the object
+    if (!$this.Cache.Contains($InputObject.Path))
+    {
+        $this.Cache.Add($InputObject.Path, $InputObject)
+    }
+    return $this.idx.Entries.Add($InputObject)
+}
+
+Add-Member -InputObject $Index -MemberType ScriptMethod -Name RemoveEntry -Value {
+    param(
+        [Parameter(Mandatory = $true,
+                   ParameterSetName = 'Object')]
+        [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+        [Hashtable]
+            $InputObject,
+
+        [Parameter(Mandatory = $true,
+                   ParameterSetName = 'Index')]
+        [Int]
+            $Index
+    )
+    if ($InputObject)
+    {
+        [void]$this.idx.Entries.Remove($InputObject)
+    }
+    else
+    {
+        $InputObject = $this.idx.Entries[$Index]
+        [void]$this.idx.Entries.RemoveAt($Index)
+    }
+
+    # Cache Management
+    $this.Cache.Remove($InputObject.Path)
+}
+
+Add-Member -InputObject $Index -MemberType ScriptProperty -Name Entries -Value {
+    return $this.idx.Entries
+}
+
+Add-Member -InputObject $Index -MemberType ScriptProperty -Name TREE -Value {
+    return $this.idx.TREE
 }
 
 Export-ModuleMember *

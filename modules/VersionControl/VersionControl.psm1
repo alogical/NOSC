@@ -83,7 +83,7 @@ Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value
     $commit.Parents = $this.HEAD
     $commit.Author  = $Author
     $commit.Message = $Message
-    $commit.Tree    = Build-Commit $this.Index.idx.Entries $this.Index.idx.TREE
+    $commit.Tree    = Build-Commit $this.Index.Entries $this.Index.TREE
 
     return $FileSystem.Write( (ConvertTo-Json $commit) )
 }
