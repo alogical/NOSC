@@ -18,6 +18,11 @@ namespace VersionControl {
             Tree,
             Tag
         }
+
+        public enum CompareResult {
+            Equivalent,
+            Modified
+        }
     }
 }
 "@
@@ -43,6 +48,89 @@ $Repository = [PSCustomObject]@{
     HEAD  = [String]::Empty
 }
 
+Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetLocation -Value {
+    param(
+        # Working directory path.
+        [Parameter(Mandatory = $true)]
+        [ValidateScript({[System.IO.Directory]::Exists($_)})]
+        [String]
+            $LiteralPath
+    )
+
+    $this.WorkingTree = $LiteralPath
+
+    # Repository directory path
+    $data_path = Join-Path $LiteralPath .vc
+
+    # Index file path
+    $idx_path  = Join-Path $data_path index
+
+    # HEAD file path
+    $head_path = Join-Path $data_path HEAD
+
+    # File system object storage directory path
+    $fs_path   = Join-Path $data_path objects
+
+    if (!$FileSystem.SetLocation($fs_path))
+    {
+        # Abort
+        Write-Debug 'Directory has not been initialized as a repository.'
+    }
+
+    $this.Index.Load($idx_path)
+}
+
+Add-Member -InputObject $Repository -MemberType ScriptMethod -Name InitLocation -Value {
+    param(
+        [Parameter(Mandatory = $true)]
+        [String]
+            $LiteralPath
+    )
+
+    # Returns the directories created | NULL
+    if (!$this.SetLocation($LiteralPath)) {
+        New-Item $this.ObjectPath -ItemType Directory
+    }
+}
+
+Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Status -Value {
+    $files    = Get-ChildItem -LiteralPath $this.WorkingDirectory -Recurse -File
+    $modified = @{}
+
+    $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingTree + '\') )
+
+    foreach ($file in $files)
+    {
+        $rel_path = $file.FullName -replace $path_filter, [String]::Empty
+        if ($this.Index.Cache.Contains($rel_path))
+        {
+            $entry = $this.Index.Cache[$rel_path]
+            if ($this.Compare($file, $entry) - [VersionControl.Repository.CompareResult]::Modified)
+            {
+                $modified.Add($rel_path, @{
+                        Entry = $entry
+                        File  = $file
+                    }
+                )
+            }
+        }
+    }
+}
+
+Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Compare -Value {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]
+            $File,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
+        [Hashtable]
+            $Entry
+    )
+    return (Compare-Entry @PSBoundParameters)
+}
+
 Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Stage -Value {
     param(
         [Parameter(Mandatory = $true)]
@@ -51,11 +139,11 @@ Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Stage -Value 
     )
 
     $entry = New-Entry
-    $entry.Name = $FileSystem.Hash($File)
-    $entry.Size = $File.Length
-    $entry.cTime = $File.CreationTimeUtc
-    $entry.mTime = $File.LastWriteTimeUtc
-    $entry.Path  = $File.FullName -replace [System.Text.RegularExpressions.Regex]::Escape($this.WorkingDirectory), [String]::Empty
+    $entry.Name   = $FileSystem.Hash($File)
+    $entry.Length = $File.Length
+    $entry.cTime  = $File.CreationTimeUtc
+    $entry.mTime  = $File.LastWriteTimeUtc
+    $entry.Path   = $File.FullName -replace [System.Text.RegularExpressions.Regex]::Escape($this.WorkingDirectory), [String]::Empty
 
     $this.Index.Entries.Add($entry)
 }
@@ -86,38 +174,6 @@ Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value
     $commit.Tree    = Build-Commit $this.Index.Entries $this.Index.TREE
 
     return $FileSystem.Write( (ConvertTo-Json $commit) )
-}
-
-Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetLocation -Value {
-    param(
-        # Working directory path.
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({[System.IO.Directory]::Exists($_)})]
-        [String]
-            $LiteralPath
-    )
-
-    $this.WorkingTree = $LiteralPath
-
-    # Repository directory path
-    $data_path = Join-Path $LiteralPath .vc
-
-    # Index file path
-    $idx_path  = Join-Path $data_path index
-
-    # HEAD file path
-    $head_path = Join-Path $data_path HEAD
-
-    # File system object storage directory path
-    $fs_path   = Join-Path $data_path objects
-    
-    if (!$FileSystem.SetLocation($fs_path))
-    {
-        # Abort
-        Write-Debug 'Directory has not been initialized as a repository.'
-    }
-
-    $this.Index.Load($idx_path)
 }
 
 Export-ModuleMember *
@@ -295,43 +351,45 @@ function New-Tree {
     return $tree
 }
 
-<#
-.SYNOPSIS
-    An index representation of a tracked file.
-
-.DESCRIPTION
-    Representation of a file used to identify changes to tracked files that will
-    part of the next commit object.
-#>
-function New-Entry {
-    $entry = @{
-        # SHA1 Identifer of the blob object for this file.
-        Name  = [String]::Empty
-
-        # Object type.
-        Type  = [VersionControl.Repository.Index.ObjectType]::Entry
-
-        # Size on disk of the file, truncated to 32-bit.
-        Size  = [Int32]0
-
-        # Time the file was created.
-        cTime = [UInt32]0
-
-        # Time the file was last modified.
-        mTime = [UInt32]0
-
-        # Relative path of the file from the root of the working directory.
-        Path  = [String]::Empty
-    }
-    return $entry
-}
-
 #
 # Object Utilities
 # ----------------
 # These functions provide conversion from stored data to in memory nested data
 # structures.  And object data structure copying.
 #
+
+<#
+.SYNOPSIS
+    Performs equivalency comparison between an index entry object and a file.
+
+.DESCRIPTION
+    Used to compare index and file objects to determine modified files within
+    the repository's working directory.
+#>
+function Compare-Entry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]
+            $File,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
+        [Hashtable]
+            $Entry
+    )
+
+    if ($File.CreationTimeUtc  -eq $Entry.cTime -and
+        $File.LastWriteTimeUtc -eq $Entry.mTime -and
+        $File.Length           -eq $Entry.Length)
+    {
+        if ($FileSystem.Hash($File) -eq $Entry.Name)
+        {
+            return [VersionControl.Repository.CompareResult]::Equivalent
+        }
+    }
+
+    return [VersionControl.Repository.CompareResult]::Modified
+}
 
 <#
 .SYNOPSIS

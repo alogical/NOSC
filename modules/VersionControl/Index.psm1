@@ -140,6 +140,44 @@ Add-Member -InputObject $Index -MemberType ScriptProperty -Name TREE -Value {
     return $this.idx.TREE
 }
 
+#
+# Public Object Constructors
+# --------------------------
+# Provides constructors for basic object data structures.  All objects are returned
+# as a hashtable.
+#
+
+<#
+.SYNOPSIS
+    An index representation of a tracked file.
+
+.DESCRIPTION
+    Representation of a file used to identify changes to tracked files that will
+    part of the next commit object.
+#>
+function New-Entry {
+    $entry = @{
+        # SHA1 Identifer of the blob object for this file.
+        Name   = [String]::Empty
+
+        # Object type.
+        Type   = [VersionControl.Repository.Index.ObjectType]::Entry
+
+        # Size on disk of the file, truncated to 32-bit.
+        Length = [Int32]0
+
+        # Time the file was created.
+        cTime  = [UInt32]0
+
+        # Time the file was last modified.
+        mTime  = [UInt32]0
+
+        # Relative path of the file from the root of the working directory.
+        Path   = [String]::Empty
+    }
+    return $entry
+}
+
 Export-ModuleMember *
 
 ###############################################################################
