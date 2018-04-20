@@ -42,7 +42,7 @@ function New-Index {
         param(
             # Index file path.
             [Parameter(Mandatory = $true)]
-            [ValidateScript({[System.IO.Directory]::Exists($_)})]
+            [ValidateScript({Test-Path $_})]
             [String]
                 $LiteralPath
         )

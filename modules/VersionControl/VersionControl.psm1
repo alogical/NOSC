@@ -37,7 +37,7 @@ namespace VersionControl {
 ###############################################################################
 ###############################################################################
 
-function New-vcRepository {
+function New-Repository {
     $Repository = [PSCustomObject]@{
         # Branch index object.
         Index = New-Index
@@ -50,6 +50,9 @@ function New-vcRepository {
 
         # The most recent commit object id for this branch.
         HEAD  = [String]::Empty
+
+        # Content addressable file system manager.
+        FileSystem = New-FileManager
     }
 
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetLocation -Value {
@@ -76,7 +79,7 @@ function New-vcRepository {
         # File system object storage directory path
         $fs_path   = Join-Path $data_path objects
 
-        if (!$FileSystem.SetLocation($fs_path))
+        if (!$this.FileSystem.SetLocation($fs_path))
         {
             # Abort
             Write-Debug 'Directory is not initialized as a repository.'
@@ -117,21 +120,23 @@ function New-vcRepository {
         $fs_path   = Join-Path $data_path objects
 
         # Returns the directories created | NULL
-        New-Item $data_path -ItemType Directory
+        $a = New-Item $data_path -ItemType Directory
         $d = New-Item (Join-Path $data_path refs)     -ItemType Directory
         $h = New-Item (Join-Path $d.FullName heads)   -ItemType Directory
             '0000000000000000000000000000000000000000' > (Join-Path $h.FullName master)
-             New-Item (Join-Path $d.FullName remotes) -ItemType Directory
-             New-Item (Join-Path $d.FullName tags)    -ItemType Directory
+             New-Item (Join-Path $d.FullName remotes) -ItemType Directory | Out-Null
+             New-Item (Join-Path $d.FullName tags)    -ItemType Directory | Out-Null
 
-        $d = New-Item (Join-Path $data_path logs)    -ItemType Directory
+        $d = New-Item (Join-Path $data_path logs)     -ItemType Directory
             [String]::Empty > (Join-Path $d.FullName HEAD)
         $d = New-Item (Join-Path $d.FullName refs)    -ItemType Directory
-             New-Item (Join-Path $d.FullName heads)   -ItemType Directory
-             New-Item (Join-Path $d.FullName remotes) -ItemType Directory
+             New-Item (Join-Path $d.FullName heads)   -ItemType Directory | Out-Null
+             New-Item (Join-Path $d.FullName remotes) -ItemType Directory | Out-Null
+
+        $a.Attributes = [System.IO.FileAttributes]::Hidden
 
         # Initialize the content addressable file system.
-        New-Item $FileSystem.Init($fs_path)
+        New-Item $this.FileSystem.Init($fs_path)
         'ref: refs/heads/master' > (Join-Path $data_path HEAD)
 
         if (!$this.SetLocation($LiteralPath)) {
@@ -160,7 +165,17 @@ function New-vcRepository {
                     )
                 }
             }
+            else
+            {
+                $modified.Add($rel_path, @{
+                        Entry = $null
+                        File  = $file
+                    }
+                )
+            }
         }
+
+        return $modified
     }
 
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Compare -Value {
@@ -185,7 +200,7 @@ function New-vcRepository {
         )
 
         $entry = New-Entry
-        $entry.Name   = $FileSystem.Hash($File)
+        $entry.Name   = $this.FileSystem.Hash($File)
         $entry.Length = $File.Length
         $entry.cTime  = $File.CreationTimeUtc
         $entry.mTime  = $File.LastWriteTimeUtc
@@ -230,9 +245,9 @@ function New-vcRepository {
         $commit.Parents = $this.HEAD
         $commit.Author  = $Author
         $commit.Message = $Message
-        $commit.Tree    = Build-Commit $this.Index.Entries $this.Index.TREE
+        $commit.Tree    = Build-Commit $this.Index.Entries $this.Index.TREE $this.FileSystem
 
-        return $FileSystem.Write( (ConvertTo-Json $commit) )
+        return $this.FileSystem.Write( (ConvertTo-Json $commit) )
     }
 
     return $Repository
@@ -263,7 +278,12 @@ function Build-Commit {
         # The index list of cached trees to speed up processing.
         [Parameter(Mandatory = $true)]
         [Hashtable]
-            $TreeCache
+            $TreeCache,
+
+        # The content addressable file system manager.
+        [Parameter(Mandatory = $true)]
+        [Object]
+            $FileSystem
     )
 
     # Paths that have been walked, and Trees created for.
@@ -310,7 +330,7 @@ function Build-Commit {
             continue
         }
 
-        [void]$tree.Subtrees.Add( (Build-Tree $cache $Walked $Current) )
+        [void]$tree.Subtrees.Add( (Build-Tree $cache $Walked $Current $FileSystem) )
     }
 
     $tree.EntryCount = $tree.Entries.Count
@@ -331,7 +351,12 @@ function Build-Tree {
 
         [Parameter(Mandatory = $true)]
         [System.Collections.Stack]
-            $Current
+            $Current,
+
+        # The content addressable file system manager.
+        [Parameter(Mandatory = $true)]
+        [Object]
+            $FileSystem
     )
     # Set current tree path relative to working directory.
     $Current.Push($cache.Path)
@@ -354,7 +379,7 @@ function Build-Tree {
             continue
         }
 
-        [void]$tree.Subtrees.Add( (Build-Tree $item $Walked $Current) )
+        [void]$tree.Subtrees.Add( (Build-Tree $item $Walked $Current $FileSystem) )
     }
 
     $tree.EntryCount = $tree.Entries.Count
@@ -436,7 +461,12 @@ function Compare-Entry {
         [Parameter(Mandatory = $true)]
         [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
         [Hashtable]
-            $Entry
+            $Entry,
+
+        # The content addressable file system manager.
+        [Parameter(Mandatory = $true)]
+        [Object]
+            $FileSystem
     )
 
     if ($File.CreationTimeUtc  -eq $Entry.cTime -and
