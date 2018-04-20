@@ -37,6 +37,34 @@ $Index = [PSCustomObject]@{
     Path  = [String]::Empty
 }
 
+Add-Member -InputObject $Index -MemberType ScriptMethod -Name Init -Value {
+    param(
+        # Index file path.
+        [Parameter(Mandatory = $true)]
+        [ValidateScript({[System.IO.Directory]::Exists($_)})]
+        [String]
+            $LiteralPath
+    )
+
+    $Index.idx  = New-Index
+    $Index.idx.HEAD = '0000000000000000000000000000000000000000'
+
+    $Index.Path = Join-Path $LiteralPath index
+    $Index.Write()
+}
+
+Add-Member -InputObject $Index -MemberType ScriptMethod -Name Load -Value {
+    param(
+        # Index file path.
+        [Parameter(Mandatory = $true)]
+        [ValidateScript({[System.IO.Directory]::Exists($_)})]
+        [String]
+            $LiteralPath
+    )
+
+    ConvertTo-Json $this.idx > $this.Path
+}
+
 Add-Member -InputObject $Index -MemberType ScriptMethod -Name Load -Value {
     param(
         # Index file path.
@@ -90,7 +118,7 @@ Add-Member -InputObject $Index -MemberType ScriptMethod -Name RefreshCache -Valu
     }
 }
 
-Add-Member -InputObject $Index -MemberType ScriptMethod -Name AddEntry -Value {
+Add-Member -InputObject $Index -MemberType ScriptMethod -Name Add -Value {
     param(
         [Parameter(Mandatory = $true)]
         [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
@@ -105,7 +133,7 @@ Add-Member -InputObject $Index -MemberType ScriptMethod -Name AddEntry -Value {
     return $this.idx.Entries.Add($InputObject)
 }
 
-Add-Member -InputObject $Index -MemberType ScriptMethod -Name RemoveEntry -Value {
+Add-Member -InputObject $Index -MemberType ScriptMethod -Name Remove -Value {
     param(
         [Parameter(Mandatory = $true,
                    ParameterSetName = 'Object')]

@@ -44,6 +44,9 @@ $Repository = [PSCustomObject]@{
     # The working directory file path.
     WorkingDirectory = [String]::Empty
 
+    # The repository sub file system.
+    Repository       = [String]::Empty
+
     # The most recent commit object id for this branch.
     HEAD  = [String]::Empty
 }
@@ -61,6 +64,7 @@ Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetLocation -
 
     # Repository directory path
     $data_path = Join-Path $LiteralPath .vc
+    $this.Repository = $data_path
 
     # Index file path
     $idx_path  = Join-Path $data_path index
@@ -74,8 +78,11 @@ Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetLocation -
     if (!$FileSystem.SetLocation($fs_path))
     {
         # Abort
-        Write-Debug 'Directory has not been initialized as a repository.'
+        Write-Debug 'Directory is not initialized as a repository.'
+        return
     }
+
+    $this.HEAD = Get-Content $head_path
 
     $this.Index.Load($idx_path)
 }
@@ -86,10 +93,40 @@ Add-Member -InputObject $Repository -MemberType ScriptMethod -Name InitLocation 
         [String]
             $LiteralPath
     )
+    # Repository directory path
+    $data_path = Join-Path $LiteralPath .vc
+
+    # Index file path
+    $idx_path  = Join-Path $data_path index
+
+    # HEAD file path
+    $head_path = Join-Path $data_path HEAD
+
+    # File system object storage directory path
+    $fs_path   = Join-Path $data_path objects
 
     # Returns the directories created | NULL
+    New-Item $data_path -ItemType Directory
+    $d = New-Item (Join-Path $data_path refs)     -ItemType Directory
+    $h = New-Item (Join-Path $d.FullName heads)   -ItemType Directory
+        '0000000000000000000000000000000000000000' > (Join-Path $h.FullName master)
+         New-Item (Join-Path $d.FullName remotes) -ItemType Directory
+         New-Item (Join-Path $d.FullName tags)    -ItemType Directory
+
+    $d = New-Item (Join-Path $d.FullName logs)    -ItemType Directory
+        [String]::Empty > (Join-Path $d.FullName HEAD)
+    $d = New-Item (Join-Path $d.FullName refs)    -ItemType Directory
+         New-Item (Join-Path $d.FullName heads)   -ItemType Directory
+         New-Item (Join-Path $d.FullName remotes) -ItemType Directory
+
+    # Initialize the content addressable file system.
+    New-Item $FileSystem.InitLocation($fs_path)
+    $this.Index.Init($data_path)
+
+    'ref: refs/heads/master' > (Join-Path $data_path HEAD)
+
     if (!$this.SetLocation($LiteralPath)) {
-        New-Item $this.ObjectPath -ItemType Directory
+        throw (New-Object System.IO.DirectoryNotFoundException("Failed to initialize: $LiteralPath"))
     }
 }
 
@@ -145,7 +182,20 @@ Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Stage -Value 
     $entry.mTime  = $File.LastWriteTimeUtc
     $entry.Path   = $File.FullName -replace [System.Text.RegularExpressions.Regex]::Escape($this.WorkingDirectory), [String]::Empty
 
-    $this.Index.Entries.Add($entry)
+    $this.Index.Add($entry)
+}
+
+Add-Member -InputObject $Repository -MemberType ScriptMethod -Name UnStage -Value {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]
+            $File
+    )
+
+    $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingDirectory + '\') )
+    $rel_path    = $File.FullName -replace $path_filter, [String]::Empty
+
+    return $this.Index.Remove($this.Index.Cache[$rel_path])
 }
 
 Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value {
@@ -187,8 +237,8 @@ Export-ModuleMember *
 ###############################################################################
 ###############################################################################
 
-Import-Module "$AppPath\modules\VersionControl\FileSystem.psm1"
-Import-Module "$AppPath\modules\VersionControl\Index.psm1"
+Import-Module ".\FileSystem.psm1"
+Import-Module ".\Index.psm1"
 
 $InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
 
