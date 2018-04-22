@@ -33,9 +33,10 @@ namespace VersionControl.Repository {
 
 function New-Index {
     $Index = [PSCustomObject]@{
-        idx   = $null
-        Cache = @{}
-        Path  = [String]::Empty
+        idx       = $null
+        PathCache = @{}
+        OidCache  = @{}
+        Path      = [String]::Empty
     }
 
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name Init -Value {
@@ -100,14 +101,16 @@ function New-Index {
     }
 
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name RefreshCache -Value {
-        $cache = $this.Cache
-        if ($cache.Count -gt 0)
-        {
-            $cache.Clear()
-        }
+        $PathCache = $this.PathCache
+        $OidCache  = $this.OidCache
+
+        $PathCache.Clear()
+        $OidCache.Clear()
+
         foreach ($entry in $this.idx.Entries)
         {
-            $cache.Add($entry.Path, $entry)
+            $PathCache.Add($entry.Path, $entry)
+            $OidCache.Add($entry.Name, $entry)
         }
     }
 
@@ -119,11 +122,40 @@ function New-Index {
                 $InputObject
         )
         # Cache the object
-        if (!$this.Cache.Contains($InputObject.Path))
+        if (!$this.PathCache.Contains($InputObject.Path))
         {
-            $this.Cache.Add($InputObject.Path, $InputObject)
+            $this.PathCache.Add($InputObject.Path, $InputObject)
         }
+        else
+        {
+            $this.UpdateEntry($this.PathCache[$InputObject.Path], $InputObject)
+        }
+
+        if (!$this.OidCache.Contains($InputObject.Name))
+        {
+            $this.OidCache.Add($InputObject.Name, $InputObject)
+        }
+        else
+        {
+            $this.UpdateEntry($this.PathCache[$InputObject.Path], $InputObject)
+        }
+
         return $this.idx.Entries.Add($InputObject)
+    }
+
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name UpdateEntry -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+            [Hashtable]
+                $Previous,
+
+            [Parameter(Mandatory = $true)]
+            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+            [Hashtable]
+                $Current
+        )
+
     }
 
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name Remove -Value {
@@ -150,7 +182,7 @@ function New-Index {
         }
 
         # Cache Management
-        $this.Cache.Remove($InputObject.Path)
+        $this.PathCache.Remove($InputObject.Path)
     }
 
     Add-Member -InputObject $Index -MemberType ScriptProperty -Name Entries -Value {

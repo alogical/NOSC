@@ -144,19 +144,29 @@ function New-Repository {
         }
     }
 
+    <#
+    .SYNOPSIS
+        Get a list of modified files.
+
+    .DESCRIPTION
+        Compares the index cache against the working directory to determine which tracked
+        files have been modified, and if there are any new files.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Status -Value {
         $files    = Get-ChildItem -LiteralPath $this.WorkingDirectory -Recurse -File
         $modified = @{}
 
-        $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingTree + '\') )
+        $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingDirectory + '\') )
 
         foreach ($file in $files)
         {
             $rel_path = $file.FullName -replace $path_filter, [String]::Empty
-            if ($this.Index.Cache.Contains($rel_path))
+
+            # Tracked File
+            if ($this.Index.PathCache.Contains($rel_path))
             {
-                $entry = $this.Index.Cache[$rel_path]
-                if ($this.Compare($file, $entry) - [VersionControl.Repository.CompareResult]::Modified)
+                $entry = $this.Index.PathCache[$rel_path]
+                if ($this.Compare($file, $entry) -eq [VersionControl.Repository.CompareResult]::Modified)
                 {
                     $modified.Add($rel_path, @{
                             Entry = $entry
@@ -165,6 +175,8 @@ function New-Repository {
                     )
                 }
             }
+
+            # New or Renamed File
             else
             {
                 $modified.Add($rel_path, @{
@@ -178,6 +190,13 @@ function New-Repository {
         return $modified
     }
 
+    <#
+    .SYNOPSIS
+        Compares index entry and file objects to determine if a file has been modified.
+
+    .DESCRIPTION
+        This is an API wrapper for the Compare-Entry function.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Compare -Value {
         param(
             [Parameter(Mandatory = $true)]
