@@ -49,6 +49,7 @@ function New-Repository {
         # Content addressable file system manager.
         FileSystem = New-FileManager
     }
+    $Repository.Index.FileSystem = $Repository.FileSystem
 
     <#
     .SYNOPSIS
@@ -185,7 +186,7 @@ function New-Repository {
                 $entry = $this.Index.PathCache[$rel_path]
                 [void]$entry_filter.Remove($entry)
 
-                if ($this.Compare($file, $entry) -eq [VersionControl.Repository.Index.CompareResult]::Modified)
+                if ($this.Index.Compare($file, $entry) -eq [VersionControl.Repository.Index.CompareResult]::Modified)
                 {
                     $modified.Add($rel_path, @{
                             Entry = $entry
@@ -226,27 +227,6 @@ function New-Repository {
 
     <#
     .SYNOPSIS
-        Compares index entry and file objects to determine if a file has been modified.
-
-    .DESCRIPTION
-        This is an API wrapper for the Compare-Entry function.
-    #>
-    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Compare -Value {
-        param(
-            [Parameter(Mandatory = $true)]
-            [System.IO.FileInfo]
-                $File,
-
-            [Parameter(Mandatory = $true)]
-            [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
-            [Hashtable]
-                $Entry
-        )
-        return (Compare-Entry @PSBoundParameters)
-    }
-
-    <#
-    .SYNOPSIS
         Adds an entry for a new or modified file.
 
     .DESCRIPTION
@@ -264,8 +244,8 @@ function New-Repository {
         $entry = New-Entry
         $entry.Name   = $this.FileSystem.Hash($File)
         $entry.Length = $File.Length
-        $entry.cTime  = $File.CreationTimeUtc
-        $entry.mTime  = $File.LastWriteTimeUtc
+        $entry.cTime  = $File.CreationTimeUtc.ToFileTimeUtc()
+        $entry.mTime  = $File.LastWriteTimeUtc.ToFileTimeUtc()
         $entry.Path   = $File.FullName -replace $path_filter, [String]::Empty
 
         $this.Index.Add($entry)
@@ -282,7 +262,7 @@ function New-Repository {
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Unstage -Value {
         param(
             [Parameter(Mandatory = $true)]
-            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+            [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
             [Hashtable]
                 $Entry
         )

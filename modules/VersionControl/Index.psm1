@@ -37,10 +37,11 @@ namespace VersionControl.Repository {
 
 function New-Index {
     $Index = [PSCustomObject]@{
-        idx       = $null
-        PathCache = @{}
-        Modified  = $false
-        Path      = [String]::Empty
+        idx        = $null
+        PathCache  = @{}
+        Modified   = $false
+        FileSystem = $null
+        Path       = [String]::Empty
     }
 
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name Init -Value {
@@ -201,8 +202,41 @@ function New-Index {
         }
     }
 
+    <#
+    .SYNOPSIS
+        Performs equivalency comparison between an index entry object and a file.
+
+    .DESCRIPTION
+        Used to compare index and file objects to determine modified files within
+        the repository's working directory.
+    #>
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name Compare -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [System.IO.FileInfo]
+                $File,
+
+            [Parameter(Mandatory = $true)]
+            [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
+            [Hashtable]
+                $Entry
+        )
+
+        if ($File.CreationTimeUtc.ToFileTimeUtc()  -eq $Entry.cTime -and
+            $File.LastWriteTimeUtc.ToFileTimeUtc() -eq $Entry.mTime -and
+            $File.Length                           -eq $Entry.Length)
+        {
+            if ($this.FileSystem.Hash($File) -eq $Entry.Name)
+            {
+                return [VersionControl.Repository.Index.CompareResult]::Equivalent
+            }
+        }
+
+        return [VersionControl.Repository.Index.CompareResult]::Modified
+    }
+
     Add-Member -InputObject $Index -MemberType ScriptProperty -Name Entries -Value {
-        return $this.idx.Entries
+        return (Write-Output -NoEnumerate $this.idx.Entries)
     }
 
     Add-Member -InputObject $Index -MemberType ScriptProperty -Name TREE -Value {
@@ -248,44 +282,6 @@ function New-Entry {
         Path   = [String]::Empty
     }
     return $entry
-}
-
-<#
-.SYNOPSIS
-    Performs equivalency comparison between an index entry object and a file.
-
-.DESCRIPTION
-    Used to compare index and file objects to determine modified files within
-    the repository's working directory.
-#>
-function Compare-Entry {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.IO.FileInfo]
-            $File,
-
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
-        [Hashtable]
-            $Entry,
-
-        # The content addressable file system manager.
-        [Parameter(Mandatory = $true)]
-        [Object]
-            $FileSystem
-    )
-
-    if ($File.CreationTimeUtc  -eq $Entry.cTime -and
-        $File.LastWriteTimeUtc -eq $Entry.mTime -and
-        $File.Length           -eq $Entry.Length)
-    {
-        if ($FileSystem.Hash($File) -eq $Entry.Name)
-        {
-            return [VersionControl.Repository.Index.CompareResult]::Equivalent
-        }
-    }
-
-    return [VersionControl.Repository.Index.CompareResult]::Modified
 }
 
 Export-ModuleMember -Function *

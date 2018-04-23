@@ -47,7 +47,7 @@ function ConvertFrom-PSObject {
 
     process
     {
-        if (!$InputObject) {
+        if ($InputObject -eq $null) {
             return $null
         }
 
@@ -61,20 +61,7 @@ function ConvertFrom-PSObject {
         elseif ($InputObject -is [psobject]) {
             $hash = @{}
             foreach ($property in $InputObject.PSObject.Properties) {
-
-                # Handle Empty Collections
-                if ($property.Value -is [System.Collections.IEnumerable] -and
-                    $property.Value -isnot [string] -and
-                    $property.Value.Count -eq 0)
-                {
-                    $hash[$property.Name] = New-Object System.Collections.ArrayList
-                }
-
-                # All others
-                else
-                {
-                    $hash[$property.Name] = ConvertFrom-PSObject $property.Value
-                }
+                $hash[$property.Name] = ConvertFrom-PSObject $property.Value
             }
             Write-Output -NoEnumerate $hash
         }
