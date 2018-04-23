@@ -152,40 +152,4 @@ Export-ModuleMember -Function *
 ###############################################################################
 ###############################################################################
 
-function New-SecureHashProvider {
-    $provider = New-Object System.Security.Cryptography.SHA1CryptoServiceProvider
-
-    Add-Member -InputObject $provider -MemberType ScriptMethod -Name HashFile -Value {
-        param(
-            [Parameter(Mandatory = $true)]
-            [System.IO.FileInfo]
-                $File
-        )
-        $reader = [System.IO.StreamReader]$File.FullName
-        [void] $this.ComputeHash( $reader.BaseStream )
-
-        $reader.Close()
-
-        return $this.OutString
-    }
-
-    Add-Member -InputObject $provider -MemberType ScriptMethod -Name HashString -Value {
-        param(
-            [Parameter(Mandatory = $true)]
-            [String]
-                $InputString
-        )
-
-        $buffer = [System.Text.UnicodeEncoding]::UTF8.GetBytes($InputString)
-        $this.ComputeHash($buffer)
-
-        return $this.OutString
-    }
-
-    Add-Member -InputObject $provider -MemberType ScriptProperty -Name OutString -Value {
-        $hash = $this.Hash | %{"{0:x2}" -f $_}
-        return ($hash -join "")
-    }
-
-    return $provider
-}
+Import-Module "$AppPath\modules\Common\Objects.psm1"

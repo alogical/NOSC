@@ -17,6 +17,10 @@ namespace VersionControl.Repository {
             Entry,
             Cache
         }
+        public enum CompareResult {
+            Equivalent,
+            Modified
+        }
     }
 }
 "@
@@ -245,6 +249,44 @@ function New-Entry {
     return $entry
 }
 
+<#
+.SYNOPSIS
+    Performs equivalency comparison between an index entry object and a file.
+
+.DESCRIPTION
+    Used to compare index and file objects to determine modified files within
+    the repository's working directory.
+#>
+function Compare-Entry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileInfo]
+            $File,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
+        [Hashtable]
+            $Entry,
+
+        # The content addressable file system manager.
+        [Parameter(Mandatory = $true)]
+        [Object]
+            $FileSystem
+    )
+
+    if ($File.CreationTimeUtc  -eq $Entry.cTime -and
+        $File.LastWriteTimeUtc -eq $Entry.mTime -and
+        $File.Length           -eq $Entry.Length)
+    {
+        if ($FileSystem.Hash($File) -eq $Entry.Name)
+        {
+            return [VersionControl.Repository.Index.CompareResult]::Equivalent
+        }
+    }
+
+    return [VersionControl.Repository.Index.CompareResult]::Modified
+}
+
 Export-ModuleMember -Function *
 
 ###############################################################################
@@ -257,6 +299,8 @@ Export-ModuleMember -Function *
 ###############################################################################
 
 $InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
+
+Import-Module "$AppPath\modules\Common\Objects.psm1"
 
 function New-PrivateIndex {
     $idx = @{
@@ -337,50 +381,4 @@ function ConvertTo-CacheTree {
     $t.Count = $Tree.Count
 
     return $t
-}
-
-function ConvertFrom-PSObject {
-    param(
-        [Parameter(Mandatory         = $false,
-                   ValueFromPipeline = $true)]
-        $InputObject = $null
-    )
-
-    process
-    {
-        if (!$InputObject) {
-            return $null
-        }
-
-        if ($InputObject -is [System.Collections.IEnumerable] -and $InputObject -isnot [string]) {
-            $collection = New-Object System.Collections.ArrayList
-            $collection.AddRange(
-                @( foreach ($object in $InputObject) { ConvertFrom-PSObject $object } )
-            )
-            Write-Output -NoEnumerate $collection
-        }
-        elseif ($InputObject -is [psobject]) {
-            $hash = @{}
-            foreach ($property in $InputObject.PSObject.Properties) {
-
-                # Handle Empty Collections
-                if ($property.Value -is [System.Collections.IEnumerable] -and
-                    $property.Value -isnot [string] -and
-                    $property.Value.Count -eq 0)
-                {
-                    $hash[$property.Name] = New-Object System.Collections.ArrayList
-                }
-
-                # All others
-                else
-                {
-                    $hash[$property.Name] = ConvertFrom-PSObject $property.Value
-                }
-            }
-            Write-Output -NoEnumerate $hash
-        }
-        else {
-            Write-Output $InputObject
-        }
-    }
 }

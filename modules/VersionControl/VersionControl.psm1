@@ -18,11 +18,6 @@ namespace VersionControl {
             Tree,
             Tag
         }
-
-        public enum CompareResult {
-            Equivalent,
-            Modified
-        }
     }
 }
 "@
@@ -190,7 +185,7 @@ function New-Repository {
                 $entry = $this.Index.PathCache[$rel_path]
                 [void]$entry_filter.Remove($entry)
 
-                if ($this.Compare($file, $entry) -eq [VersionControl.Repository.CompareResult]::Modified)
+                if ($this.Compare($file, $entry) -eq [VersionControl.Repository.Index.CompareResult]::Modified)
                 {
                     $modified.Add($rel_path, @{
                             Entry = $entry
@@ -374,6 +369,7 @@ Export-ModuleMember -Function *
 
 Import-Module "$AppPath\modules\VersionControl\FileSystem.psm1"
 Import-Module "$AppPath\modules\VersionControl\Index.psm1"
+Import-Module "$AppPath\modules\Common\Objects.psm1"
 
 $InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
 
@@ -592,105 +588,4 @@ function New-Tree {
     }
 
     return $tree
-}
-
-#
-# Object Utilities
-# ----------------
-# These functions provide conversion from stored data to in memory nested data
-# structures.  And object data structure copying.
-#
-
-<#
-.SYNOPSIS
-    Performs equivalency comparison between an index entry object and a file.
-
-.DESCRIPTION
-    Used to compare index and file objects to determine modified files within
-    the repository's working directory.
-#>
-function Compare-Entry {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.IO.FileInfo]
-            $File,
-
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
-        [Hashtable]
-            $Entry,
-
-        # The content addressable file system manager.
-        [Parameter(Mandatory = $true)]
-        [Object]
-            $FileSystem
-    )
-
-    if ($File.CreationTimeUtc  -eq $Entry.cTime -and
-        $File.LastWriteTimeUtc -eq $Entry.mTime -and
-        $File.Length           -eq $Entry.Length)
-    {
-        if ($FileSystem.Hash($File) -eq $Entry.Name)
-        {
-            return [VersionControl.Repository.CompareResult]::Equivalent
-        }
-    }
-
-    return [VersionControl.Repository.CompareResult]::Modified
-}
-
-<#
-.SYNOPSIS
-    Performs a deep copy of a Hashtable memory structure.
-#>
-function Copy-Hashtable {
-    param(
-        [Parameter(Mandatory = $true)]
-        [Hashtable]
-            $InputObject
-    )
-    $hash = @{}
-    foreach ($entry in $InputObject.GetEnumerator()) {
-        $hash[$entry.Key] = $entry.Value
-    }
-
-    return $hash
-}
-
-function New-SecureHashProvider {
-    $provider = New-Object System.Security.Cryptography.SHA1CryptoServiceProvider
-
-    Add-Member -InputObject $provider -MemberType ScriptMethod -Name HashFile -Value {
-        param(
-            [Parameter(Mandatory = $true)]
-            [System.IO.FileInfo]
-                $File
-        )
-        $reader = [System.IO.StreamReader]$File.FullName
-        [void] $this.ComputeHash( $reader.BaseStream )
-
-        $reader.Close()
-
-        return $this.OutString
-    }
-
-    Add-Member -InputObject $provider -MemberType ScriptMethod -Name HashString -Value {
-        param(
-            [Parameter(Mandatory = $true)]
-            [String]
-                $InputString
-        )
-
-        $buffer = [System.Text.UnicodeEncoding]::UTF8.GetBytes($InputString)
-        $this.ComputeHash($buffer)
-
-        return $this.OutString
-    }
-
-    Add-Member -InputObject $provider -MemberType ScriptProperty -Name OutString -Value {
-        $hash = $this.Hash | %{"{0:x2}" -f $_}
-        return ($hash -join "")
-    }
-
-    return $provider
 }
