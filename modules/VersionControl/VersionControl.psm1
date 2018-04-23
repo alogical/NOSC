@@ -109,49 +109,48 @@ function New-Repository {
 
     <#
     .SYNOPSIS
-        Initializes the .vc directory structure of a repository.
+        Initializes a standard repository.
 
     .DESCRIPTION
-        Used to initialize a standard repositories hidden sub-directory structure.
+        Used to initialize a standard repository's hidden .vc sub-directory structure.
     #>
-    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Init -Value {
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name InitStd -Value {
         param(
             [Parameter(Mandatory = $true)]
             [ValidateScript({[System.IO.Directory]::Exists($_)})]
             [String]
                 $LiteralPath
         )
+
         # Repository directory path
         $data_path = Join-Path $LiteralPath .vc
 
-        # Index file path
-        $idx_path  = Join-Path $data_path index
+        $vc = New-Item $data_path -ItemType Directory
+        $vc.Attributes = [System.IO.FileAttributes]::Hidden
 
-        # HEAD file path
-        $head_path = Join-Path $data_path HEAD
+        Initialize-Repository $data_path -FileSystem $this.FileSystem
 
-        # File system object storage directory path
-        $fs_path   = Join-Path $data_path objects
+        if (!$this.SetLocation($LiteralPath)) {
+            throw (New-Object System.IO.DirectoryNotFoundException("Failed to initialize: $LiteralPath"))
+        }
+    }
 
-        # Returns the directories created | NULL
-        $a = New-Item $data_path -ItemType Directory
-        $d = New-Item (Join-Path $data_path refs)     -ItemType Directory
-        $h = New-Item (Join-Path $d.FullName heads)   -ItemType Directory
-            '0000000000000000000000000000000000000000' > (Join-Path $h.FullName master)
-             New-Item (Join-Path $d.FullName remotes) -ItemType Directory | Out-Null
-             New-Item (Join-Path $d.FullName tags)    -ItemType Directory | Out-Null
+    <#
+    .SYNOPSIS
+        Initializes a bare repository.
 
-        $d = New-Item (Join-Path $data_path logs)     -ItemType Directory
-            [String]::Empty > (Join-Path $d.FullName HEAD)
-        $d = New-Item (Join-Path $d.FullName refs)    -ItemType Directory
-             New-Item (Join-Path $d.FullName heads)   -ItemType Directory | Out-Null
-             New-Item (Join-Path $d.FullName remotes) -ItemType Directory | Out-Null
+    .DESCRIPTION
+        Used to initialize a bare repository which has no working directory.
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name InitBare -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [ValidateScript({[System.IO.Directory]::Exists($_)})]
+            [String]
+                $LiteralPath
+        )
 
-        $a.Attributes = [System.IO.FileAttributes]::Hidden
-
-        # Initialize the content addressable file system.
-        New-Item $this.FileSystem.Init($fs_path)
-        'ref: refs/heads/master' > (Join-Path $data_path HEAD)
+        Initialize-Repository $LiteralPath -FileSystem $this.FileSystem
 
         if (!$this.SetLocation($LiteralPath)) {
             throw (New-Object System.IO.DirectoryNotFoundException("Failed to initialize: $LiteralPath"))
@@ -375,6 +374,54 @@ Import-Module "$AppPath\modules\VersionControl\FileSystem.psm1"
 Import-Module "$AppPath\modules\VersionControl\Index.psm1"
 
 $InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
+
+<#
+.SYNOPSIS
+    Initializes a repository.
+
+.DESCRIPTION
+    Used to initialize a repository's file structure.
+#>
+function Initialize-Repository {
+    param(
+        # The directory in which the repository structure will be created.
+        [Parameter(Mandatory = $true)]
+        [ValidateScript({[System.IO.Directory]::Exists($_)})]
+        [String]
+            $LiteralPath,
+
+        # The content addressable file system object of the repository.
+        [Parameter(Mandatory = $true)]
+        [Object]
+            $FileSystem
+    )
+
+    # Index file path
+    $idx_path  = Join-Path $LiteralPath index
+
+    # HEAD file path
+    $head_path = Join-Path $LiteralPath HEAD
+
+    # File system object storage directory path
+    $fs_path   = Join-Path $LiteralPath objects
+
+    # Returns the directories created | NULL
+    $d = New-Item (Join-Path $LiteralPath refs)      -ItemType Directory
+    $h = New-Item (Join-Path $d.FullName heads)      -ItemType Directory
+        '0000000000000000000000000000000000000000' > (Join-Path $h.FullName master)
+            New-Item (Join-Path $d.FullName remotes) -ItemType Directory | Out-Null
+            New-Item (Join-Path $d.FullName tags)    -ItemType Directory | Out-Null
+
+    $d = New-Item (Join-Path $LiteralPath logs)      -ItemType Directory
+        [String]::Empty > (Join-Path $d.FullName HEAD)
+    $d = New-Item (Join-Path $d.FullName refs)       -ItemType Directory
+            New-Item (Join-Path $d.FullName heads)   -ItemType Directory | Out-Null
+            New-Item (Join-Path $d.FullName remotes) -ItemType Directory | Out-Null
+
+    # Initialize the content addressable file system.
+    New-Item $FileSystem.Init($fs_path)
+    'ref: refs/heads/master' > $head_path
+}
 
 function Build-Commit {
     param(
