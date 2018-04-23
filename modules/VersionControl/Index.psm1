@@ -74,6 +74,7 @@ function New-Index {
 
         $content = Get-Content $LiteralPath -Raw
         $this.idx = ConvertFrom-PSObject (ConvertFrom-Json $content)
+        $this.Path = $LiteralPath
 
         $this.RefreshCache()
 
