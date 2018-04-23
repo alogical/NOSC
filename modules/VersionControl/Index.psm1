@@ -68,16 +68,7 @@ function New-Index {
                 $LiteralPath
         )
 
-        $f = Get-Item $LiteralPath
-
-        if (!$f) {
-            throw (New-Object System.IO.FileNotFoundException("Could not locate index"))
-        }
-
-        $stream  = $f.OpenText()
-        $content = $stream.ReadToEnd()
-        $stream.Close()
-
+        $content = Get-Content $LiteralPath -Raw
         $this.idx = ConvertFrom-PSObject (ConvertFrom-Json $content)
 
         $this.RefreshCache()
@@ -102,8 +93,6 @@ function New-Index {
 
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name RefreshCache -Value {
         $PathCache = $this.PathCache
-        $OidCache  = $this.OidCache
-
         $PathCache.Clear()
 
         foreach ($entry in $this.idx.Entries)
@@ -373,7 +362,20 @@ function ConvertFrom-PSObject {
         elseif ($InputObject -is [psobject]) {
             $hash = @{}
             foreach ($property in $InputObject.PSObject.Properties) {
-                $hash[$property.Name] = ConvertFrom-PSObject $property.Value
+
+                # Handle Empty Collections
+                if ($property.Value -is [System.Collections.IEnumerable] -and
+                    $property.Value -isnot [string] -and
+                    $property.Value.Count -eq 0)
+                {
+                    $hash[$property.Name] = New-Object System.Collections.ArrayList
+                }
+
+                # All others
+                else
+                {
+                    $hash[$property.Name] = ConvertFrom-PSObject $property.Value
+                }
             }
             Write-Output -NoEnumerate $hash
         }
