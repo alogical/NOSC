@@ -158,14 +158,21 @@ function New-Repository {
 
         $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingDirectory + '\') )
 
+        # Entries that were not found in the working directory
+        $entry_filter = New-Object System.Collections.ArrayList
+        $entry_filter.AddRange($this.idx.Entries.ToArray())
+
+        # Validate current working directory contents
         foreach ($file in $files)
         {
             $rel_path = $file.FullName -replace $path_filter, [String]::Empty
 
-            # Tracked File
+            # Modified file detection
             if ($this.Index.PathCache.Contains($rel_path))
             {
                 $entry = $this.Index.PathCache[$rel_path]
+                [void]$entry_filter.Remove($entry)
+
                 if ($this.Compare($file, $entry) -eq [VersionControl.Repository.CompareResult]::Modified)
                 {
                     $modified.Add($rel_path, @{
@@ -176,7 +183,7 @@ function New-Repository {
                 }
             }
 
-            # New or Renamed File
+            # New file
             else
             {
                 $modified.Add($rel_path, @{
@@ -185,6 +192,16 @@ function New-Repository {
                     }
                 )
             }
+        }
+
+        # Renamed or Deleted file detection
+        foreach ($entry in $entry_filter)
+        {
+            $modified.Add($rel_path, @{
+                    Entry = $entry
+                    File  = $null
+                }
+            )
         }
 
         return $modified
