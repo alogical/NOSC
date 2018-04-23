@@ -110,7 +110,16 @@ function New-Index {
         foreach ($entry in $this.idx.Entries)
         {
             $PathCache.Add($entry.Path, $entry)
-            $OidCache.Add($entry.Name, $entry)
+
+            # Support for multiple copies of the same file
+            if ($OidCache.Contains($entry.Name))
+            {
+                $OidCache[$entry.Name] += $entry
+            }
+            else
+            {
+                $OidCache.Add($entry.Name, @($entry))
+            }
         }
     }
 
@@ -121,41 +130,69 @@ function New-Index {
             [Hashtable]
                 $InputObject
         )
-        # Cache the object
+
+        # Previous entry if the added entry updates an existing entry
+        $previous = $null
+
+        # Cache the object path
         if (!$this.PathCache.Contains($InputObject.Path))
         {
             $this.PathCache.Add($InputObject.Path, $InputObject)
         }
         else
         {
-            $this.UpdateEntry($this.PathCache[$InputObject.Path], $InputObject)
+            $previous = $this.PathCache[$InputObject.Path]
+            $this.PathCache[$InputObject.Path] = $InputObject
         }
 
+        # Cache the Object SHA ID
         if (!$this.OidCache.Contains($InputObject.Name))
         {
             $this.OidCache.Add($InputObject.Name, $InputObject)
         }
         else
         {
-            $this.UpdateEntry($this.PathCache[$InputObject.Path], $InputObject)
+            $OidEntries = New-Object System.Collections.ArrayList
+            foreach ($object in $this.OidCache[$InputObject.Name])
+            {
+                if ($object.Path -eq $InputObject.Path)
+                {
+                    [void]$OidEntries.Add($InputObject)
+                    continue
+                }
+                [void]$OidEntries.Add($object)
+            }
+            $this.OidCache[$InputObject.Name] = $OidEntries.ToArray()
         }
 
-        return $this.idx.Entries.Add($InputObject)
-    }
+        # Remove the previous entry
+        if ($previous)
+        {
+            [void]$this.Remove($previous, $true)
+        }
 
-    Add-Member -InputObject $Index -MemberType ScriptMethod -Name UpdateEntry -Value {
-        param(
-            [Parameter(Mandatory = $true)]
-            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
-            [Hashtable]
-                $Previous,
+        # Invalidate the Cache Tree for this object
+        #   The Cache Tree may also be invalidated by Repository.Status()
+        $path_component = $InputObject.Path.Split('\')
+        $current = $this.TREE
+        for ($i = 0; $i -lt $path_component.Count; $i++)
+        {
+            foreach ($tree in $current.Subtrees)
+            {
+                if ($tree.Path -eq $path_component[$i])
+                {
+                    $tree.Count = -1
+                    $current = $tree
+                    break
+                }
+            }
+        }
 
-            [Parameter(Mandatory = $true)]
-            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
-            [Hashtable]
-                $Current
-        )
+        # Save changes to the index.
+        $i = $this.idx.Entries.Add($InputObject)
+        $this.Write()
 
+        return $i
     }
 
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name Remove -Value {
@@ -169,7 +206,11 @@ function New-Index {
             [Parameter(Mandatory = $true,
                        ParameterSetName = 'Index')]
             [Int]
-                $Index
+                $Index,
+
+            [Parameter(Mandatory = $false)]
+            [Bool]
+                $CacheUpdated = $false
         )
         if ($InputObject)
         {
@@ -182,7 +223,31 @@ function New-Index {
         }
 
         # Cache Management
-        $this.PathCache.Remove($InputObject.Path)
+        #   Entry object may have been removed from the cache by an Add operation
+        #   before hand, or some other arbitrary action.
+        if (!$CacheUpdated)
+        {
+            if ($this.PathCache.Contains($InputObject.Path))
+            {
+                $this.PathCache.Remove($InputObject.Path)
+            }
+            $OidEntries = New-Object System.Collections.ArrayList
+            foreach ($object in $this.OidCache[$InputObject.Name])
+            {
+                if ($object.Path -ne $InputObject.Path)
+                {
+                    [void]$OidEntries.Add($object)
+                }
+            }
+            if ($OidEntries.Count -eq 0)
+            {
+                $this.OidCache.Remove($InputObject.Name)
+            }
+            else
+            {
+                $this.OidCache[$InputObject.Name] = $OidEntries.ToArray()
+            }
+        }
     }
 
     Add-Member -InputObject $Index -MemberType ScriptProperty -Name Entries -Value {
