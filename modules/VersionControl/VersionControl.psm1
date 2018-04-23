@@ -237,6 +237,13 @@ function New-Repository {
         return (Compare-Entry @PSBoundParameters)
     }
 
+    <#
+    .SYNOPSIS
+        Adds an entry for a new or modified file.
+
+    .DESCRIPTION
+        Used to track changes to the working directory in preparation for the next commit.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Stage -Value {
         param(
             [Parameter(Mandatory = $true)]
@@ -254,6 +261,14 @@ function New-Repository {
         $this.Index.Add($entry)
     }
 
+    <#
+    .SYNOPSIS
+        Unstages the modified version of a file.
+
+    .DESCRIPTION
+        Used to untrack changes to a file and revert the index entry for the file to
+        the previously committed version of the file.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name UnStage -Value {
         param(
             [Parameter(Mandatory = $true)]
@@ -279,6 +294,25 @@ function New-Repository {
         {
             return $this.Index.Remove($entry)
         }
+    }
+
+    <#
+    .SYNOPSIS
+        Untracks a file.
+
+    .DESCRIPTION
+        Used to untrack a file from the repository history when deleting a file from
+        the working directory.
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name UnTrack -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+            [Hashtable]
+                $Entry
+        )
+
+        return $this.Index.Remove($entry)
     }
 
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value {
