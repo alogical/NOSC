@@ -35,6 +35,7 @@ function New-Index {
     $Index = [PSCustomObject]@{
         idx       = $null
         PathCache = @{}
+        Modified  = $false
         Path      = [String]::Empty
     }
 
@@ -104,7 +105,6 @@ function New-Index {
         $OidCache  = $this.OidCache
 
         $PathCache.Clear()
-        $OidCache.Clear()
 
         foreach ($entry in $this.idx.Entries)
         {
@@ -122,6 +122,7 @@ function New-Index {
 
         # Previous entry if the added entry updates an existing entry
         $previous = $null
+        $this.Modified = $true
 
         # Cache the object path
         if (!$this.PathCache.Contains($InputObject.Path))
@@ -181,6 +182,9 @@ function New-Index {
             [Bool]
                 $CacheUpdated = $false
         )
+
+        $this.Modified = $true
+
         if ($InputObject)
         {
             [void]$this.idx.Entries.Remove($InputObject)

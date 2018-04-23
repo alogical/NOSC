@@ -160,7 +160,11 @@ function New-Repository {
 
         # Entries that were not found in the working directory
         $entry_filter = New-Object System.Collections.ArrayList
-        $entry_filter.AddRange($this.idx.Entries.ToArray())
+
+        if ($this.idx.Entries.Count -gt 0)
+        {
+            $entry_filter.AddRange($this.idx.Entries.ToArray())
+        }
 
         # Validate current working directory contents
         foreach ($file in $files)
@@ -202,6 +206,11 @@ function New-Repository {
                     File  = $null
                 }
             )
+        }
+
+        if ($modified.Count -gt 0)
+        {
+            $this.Modified = $true
         }
 
         return $modified
