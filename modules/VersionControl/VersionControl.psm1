@@ -114,6 +114,17 @@ function New-Repository {
         return $true
     }
 
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetHeadOid -Value {
+        [System.Text.RegularExpressions.Match]$match = $Regex.Head.Match($this.HEAD)
+        $ref = $match.Groups['path'].Value
+        return (Get-Content (Join-Path $this.Repository $ref))
+    }
+
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetHead -Value {
+        $object = Get-Content $this.FileSystem.Get($this.GetHeadOid()) -Raw
+        return (ConvertFrom-PSObject (ConvertFrom-Json $object))
+    }
+
     <#
     .SYNOPSIS
         Initializes a standard repository.
@@ -320,29 +331,21 @@ function New-Repository {
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value {
         param(
             [Parameter(Mandatory = $true)]
-            [System.Collections.ArrayList]
-                $Parents,
-
-            [Parameter(Mandatory = $true)]
             [String]
                 $Author,
 
             [Parameter(Mandatory = $true)]
             [String]
-                $Message,
-
-            [Parameter(Mandatory = $true)]
-            [String]
-                $Tree
+                $Message
         )
 
         $commit = New-Commit
-        $commit.Parents = $this.HEAD
+        [void]$commit.Parents.Add($this.GetHeadOid())
         $commit.Author  = $Author
         $commit.Message = $Message
         $commit.Tree    = Build-Commit $this.Index.Entries $this.Index.TREE $this.FileSystem
 
-        return $this.FileSystem.Write( (ConvertTo-Json $commit) )
+        return $this.FileSystem.WriteBlob( (ConvertTo-Json $commit).GetBytes() )
     }
 
     return $Repository
@@ -363,6 +366,11 @@ Import-Module "$AppPath\modules\VersionControl\Index.psm1"
 Import-Module "$AppPath\modules\Common\Objects.psm1"
 
 $InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
+
+$Regex = @{}
+$Regex.Head = New-Object System.Text.RegularExpressions.Regex(
+    '^ref: (?<path>.*)$',
+    [System.Text.RegularExpressions.RegexOptions]::Compiled)
 
 <#
 .SYNOPSIS
@@ -439,7 +447,7 @@ function Build-Commit {
         # Write object to content addressable file system.
         if (!$FileSystem.Exists($entry.Name))
         {
-            [void]$FileSystem.Write( (Get-Item $entry.Path) )
+            [void]$FileSystem.WriteStream( (Get-Item $entry.Path).FullName )
         }
 
         $parent = Split-Path $entry.Path -Parent
@@ -471,11 +479,11 @@ function Build-Commit {
             continue
         }
 
-        [void]$tree.Subtrees.Add( (Build-Tree $cache $Walked $Current $FileSystem) )
+        [void]$root.Subtrees.Add( (Build-Tree $cache $Walked $Current $FileSystem) )
     }
 
-    $tree.EntryCount = $tree.Entries.Count
-    $tree.TreeCount  = $tree.Subtrees.Count
+    $root.EntryCount = $root.Entries.Count
+    $root.TreeCount  = $root.Subtrees.Count
 
     return $tree
 }
@@ -537,7 +545,7 @@ function New-Commit {
         Tree    = [String]::Empty
 
         # SHA1 identifiers of the commits that preceded this commit.
-        Parents = [String]::Empty
+        Parents = New-Object System.Collections.ArrayList
 
         # The name of the person who authored this commit.
         Author  = [String]::Empty
@@ -546,7 +554,7 @@ function New-Commit {
         Message = [String]::Empty
 
         # Date the commit object was created.
-        Date    = [DateTime]::Now
+        Date    = [DateTime]::Now.ToFileTimeUtc()
     }
 
     return $commit

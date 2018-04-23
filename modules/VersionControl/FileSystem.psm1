@@ -72,14 +72,15 @@ function New-FileManager {
         return $name
     }
 
-    Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name Write -Value {
+    Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name WriteBlob -Value {
         param(
-            # Data to be turned into a blob.
+            # A blob of data to be written to the content addressable file system.
             [Parameter(Mandatory = $true)]
-                $InputObject
+            [byte[]]
+                $Blob
         )
 
-        $name = $this.Hash($InputObject)
+        $name = $this.ShaProvider.HashBytes($Blob)
 
         $object_path = $this.ResolvePath($name)
         $object_cache = Split-Path $object_path -Parent
@@ -88,7 +89,35 @@ function New-FileManager {
             [void]([System.IO.Directory]::CreateDirectory($object_cache))
         }
 
-        ConvertTo-Json $blob > $object_path
+        $writer = [System.IO.BinaryWriter]::new( [System.IO.File]::Open($object_path, [System.IO.FileMode]::Create) )
+        $writer.Write($Blob)
+        $writer.Flush()
+        $writer.Close()
+
+        return $name
+    }
+
+    Add-Member -InputObject $FileSystem -MemberType ScriptMethod -Name WriteStream -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [System.IO.StreamReader]
+                $Stream
+        )
+
+        $name = $this.ShaProvider.HashStream($Stream)
+
+        $object_path = $this.ResolvePath($name)
+        $object_cache = Split-Path $object_path -Parent
+
+        if (![System.IO.Directory]::Exists($object_cache)) {
+            [void]([System.IO.Directory]::CreateDirectory($object_cache))
+        }
+
+        $Stream.BaseStream.Position = 0
+        $writer = [System.IO.BinaryWriter]::new( [System.IO.File]::Open($object_path, [System.IO.FileMode]::Create) )
+        $writer.Write($Stream.ReadToEnd())
+        $writer.Flush()
+        $writer.Close()
 
         return $name
     }

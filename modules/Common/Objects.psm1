@@ -88,6 +88,26 @@ function New-SecureHashProvider {
         return $this.OutString
     }
 
+    Add-Member -InputObject $provider -MemberType ScriptMethod -Name HashStream -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [System.IO.StreamReader]
+                $Stream
+        )
+        [void]$this.ComputeHash( $Stream.BaseStream )
+        return $this.OutString
+    }
+
+    Add-Member -InputObject $provider -MemberType ScriptMethod -Name HashBytes -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [byte[]]
+                $InputBytes
+        )
+        $this.ComputeHash($InputBytes)
+        return $this.OutString
+    }
+
     Add-Member -InputObject $provider -MemberType ScriptMethod -Name HashString -Value {
         param(
             [Parameter(Mandatory = $true)]
