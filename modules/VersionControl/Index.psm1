@@ -35,7 +35,6 @@ function New-Index {
     $Index = [PSCustomObject]@{
         idx       = $null
         PathCache = @{}
-        OidCache  = @{}
         Path      = [String]::Empty
     }
 
@@ -110,16 +109,6 @@ function New-Index {
         foreach ($entry in $this.idx.Entries)
         {
             $PathCache.Add($entry.Path, $entry)
-
-            # Support for multiple copies of the same file
-            if ($OidCache.Contains($entry.Name))
-            {
-                $OidCache[$entry.Name] += $entry
-            }
-            else
-            {
-                $OidCache.Add($entry.Name, @($entry))
-            }
         }
     }
 
@@ -143,26 +132,6 @@ function New-Index {
         {
             $previous = $this.PathCache[$InputObject.Path]
             $this.PathCache[$InputObject.Path] = $InputObject
-        }
-
-        # Cache the Object SHA ID
-        if (!$this.OidCache.Contains($InputObject.Name))
-        {
-            $this.OidCache.Add($InputObject.Name, $InputObject)
-        }
-        else
-        {
-            $OidEntries = New-Object System.Collections.ArrayList
-            foreach ($object in $this.OidCache[$InputObject.Name])
-            {
-                if ($object.Path -eq $InputObject.Path)
-                {
-                    [void]$OidEntries.Add($InputObject)
-                    continue
-                }
-                [void]$OidEntries.Add($object)
-            }
-            $this.OidCache[$InputObject.Name] = $OidEntries.ToArray()
         }
 
         # Remove the previous entry
@@ -230,22 +199,6 @@ function New-Index {
             if ($this.PathCache.Contains($InputObject.Path))
             {
                 $this.PathCache.Remove($InputObject.Path)
-            }
-            $OidEntries = New-Object System.Collections.ArrayList
-            foreach ($object in $this.OidCache[$InputObject.Name])
-            {
-                if ($object.Path -ne $InputObject.Path)
-                {
-                    [void]$OidEntries.Add($object)
-                }
-            }
-            if ($OidEntries.Count -eq 0)
-            {
-                $this.OidCache.Remove($InputObject.Name)
-            }
-            else
-            {
-                $this.OidCache[$InputObject.Name] = $OidEntries.ToArray()
             }
         }
     }
