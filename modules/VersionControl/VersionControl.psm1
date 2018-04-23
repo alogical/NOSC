@@ -223,7 +223,7 @@ function New-Repository {
 
         if ($modified.Count -gt 0)
         {
-            $this.Modified = $true
+            $this.Index.Modified = $true
         }
 
         return $modified
@@ -264,12 +264,14 @@ function New-Repository {
                 $File
         )
 
+        $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingDirectory + '\') )
+
         $entry = New-Entry
         $entry.Name   = $this.FileSystem.Hash($File)
         $entry.Length = $File.Length
         $entry.cTime  = $File.CreationTimeUtc
         $entry.mTime  = $File.LastWriteTimeUtc
-        $entry.Path   = $File.FullName -replace [System.Text.RegularExpressions.Regex]::Escape($this.WorkingDirectory), [String]::Empty
+        $entry.Path   = $File.FullName -replace $path_filter, [String]::Empty
 
         $this.Index.Add($entry)
     }

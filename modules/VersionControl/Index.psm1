@@ -115,7 +115,7 @@ function New-Index {
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name Add -Value {
         param(
             [Parameter(Mandatory = $true)]
-            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+            [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
             [Hashtable]
                 $InputObject
         )
@@ -169,7 +169,7 @@ function New-Index {
         param(
             [Parameter(Mandatory = $true,
                        ParameterSetName = 'Object')]
-            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+            [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
             [Hashtable]
                 $InputObject,
 
