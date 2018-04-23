@@ -55,6 +55,13 @@ function New-Repository {
         FileSystem = New-FileManager
     }
 
+    <#
+    .SYNOPSIS
+        Changes working directories.
+
+    .DESCRIPTION
+        Changes from one repository to another.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetLocation -Value {
         param(
             # Working directory path.
@@ -100,6 +107,13 @@ function New-Repository {
         return $true
     }
 
+    <#
+    .SYNOPSIS
+        Initializes the .vc directory structure of a repository.
+
+    .DESCRIPTION
+        Used to initialize a standard repositories hidden sub-directory structure.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Init -Value {
         param(
             [Parameter(Mandatory = $true)]
@@ -269,7 +283,7 @@ function New-Repository {
         Used to untrack changes to a file and revert the index entry for the file to
         the previously committed version of the file.
     #>
-    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name UnStage -Value {
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Unstage -Value {
         param(
             [Parameter(Mandatory = $true)]
             [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
@@ -278,9 +292,10 @@ function New-Repository {
         )
 
         # Revert to the previous commit entry if available.
-        $commit = $this.FileSystem.Get($this.HEAD)
-        if ($commit)
+        $head = $this.FileSystem.Get($this.HEAD)
+        if ($head)
         {
+            $commit = ConvertFrom-Json (Get-Content $head.FullName -Raw)
             foreach ($item in $commit.Entries)
             {
                 if ($item.Path -eq $Entry.Path)
@@ -304,7 +319,7 @@ function New-Repository {
         Used to untrack a file from the repository history when deleting a file from
         the working directory.
     #>
-    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name UnTrack -Value {
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Untrack -Value {
         param(
             [Parameter(Mandatory = $true)]
             [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
