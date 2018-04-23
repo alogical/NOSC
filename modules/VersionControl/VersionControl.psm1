@@ -257,14 +257,28 @@ function New-Repository {
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name UnStage -Value {
         param(
             [Parameter(Mandatory = $true)]
-            [System.IO.FileInfo]
-                $File
+            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+            [Hashtable]
+                $Entry
         )
 
-        $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingDirectory + '\') )
-        $rel_path    = $File.FullName -replace $path_filter, [String]::Empty
-
-        return $this.Index.Remove($this.Index.Cache[$rel_path])
+        # Revert to the previous commit entry if available.
+        $commit = $this.FileSystem.Get($this.HEAD)
+        if ($commit)
+        {
+            foreach ($item in $commit.Entries)
+            {
+                if ($item.Path -eq $Entry.Path)
+                {
+                    return $this.Index.Add($item)
+                }
+            }
+            return $this.Index.Remove($entry)
+        }
+        else
+        {
+            return $this.Index.Remove($entry)
+        }
     }
 
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value {
