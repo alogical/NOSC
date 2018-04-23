@@ -64,13 +64,24 @@ function New-Repository {
             [Parameter(Mandatory = $true)]
             [ValidateScript({[System.IO.Directory]::Exists($_)})]
             [String]
-                $LiteralPath
-        )
+                $LiteralPath,
 
+            [Parameter(Mandatory = $false)]
+            [Bool]
+                $Bare = $false
+        )
         $this.WorkingDirectory = $LiteralPath
 
+        if (!$Bare)
+        {
+            $data_path = Join-Path $LiteralPath .vc
+        }
+        else
+        {
+            $data_path = $LiteralPath
+        }
+
         # Repository directory path
-        $data_path = Join-Path $LiteralPath .vc
         $this.Repository = $data_path
 
         # Index file path
@@ -148,7 +159,7 @@ function New-Repository {
 
         Initialize-Repository $LiteralPath -FileSystem $this.FileSystem
 
-        if (!$this.SetLocation($LiteralPath)) {
+        if (!$this.SetLocation($LiteralPath, $true)) {
             throw (New-Object System.IO.DirectoryNotFoundException("Failed to initialize: $LiteralPath"))
         }
     }
@@ -374,9 +385,6 @@ function Initialize-Repository {
             $FileSystem
     )
 
-    # Index file path
-    $idx_path  = Join-Path $LiteralPath index
-
     # HEAD file path
     $head_path = Join-Path $LiteralPath HEAD
 
@@ -387,8 +395,8 @@ function Initialize-Repository {
     $d = New-Item (Join-Path $LiteralPath refs)      -ItemType Directory
     $h = New-Item (Join-Path $d.FullName heads)      -ItemType Directory
         '0000000000000000000000000000000000000000' > (Join-Path $h.FullName master)
-            New-Item (Join-Path $d.FullName remotes) -ItemType Directory | Out-Null
-            New-Item (Join-Path $d.FullName tags)    -ItemType Directory | Out-Null
+         New-Item (Join-Path $d.FullName remotes)    -ItemType Directory | Out-Null
+         New-Item (Join-Path $d.FullName tags)       -ItemType Directory | Out-Null
 
     $d = New-Item (Join-Path $LiteralPath logs)      -ItemType Directory
         [String]::Empty > (Join-Path $d.FullName HEAD)
