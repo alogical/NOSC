@@ -61,7 +61,7 @@ function New-Index {
     }
 
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name Write -Value {
-        ConvertTo-Json $this.idx > $this.Path
+        ConvertTo-Json $this.idx -Depth 100 > $this.Path
     }
 
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name Load -Value {
@@ -138,15 +138,16 @@ function New-Index {
 
         # Cache Tree for this object
         #   The Cache Tree may also be invalidated by Repository.Status()
-        $path_component = $InputObject.Path.Split('\')
+        $path_component = @((Split-Path $InputObject.Path -Parent).Split('\'))
         $current = $this.TREE
-        for ($i = 0; $i -lt $path_component.Count; $i++)
+        $current.Count = -1
+        foreach ($dir in $path_component)
         {
             # Create Empty Cache Tree
-            if ($current.Subtrees.Count -eq 0)
+            if ($current.Subtrees.Count -eq 0 -and ![String]::IsNullOrEmpty($dir))
             {
                 $new = New-CacheTree
-                $new.Path  = $path_component[$i]
+                $new.Path  = $dir
                 $new.Count = -1
                 [void]$current.Subtrees.Add($new)
                 $current = $new
@@ -156,7 +157,7 @@ function New-Index {
             # Invalidate Tree
             foreach ($tree in $current.Subtrees)
             {
-                if ($tree.Path -eq $path_component[$i])
+                if ($tree.Path -eq $dir)
                 {
                     $tree.Count = -1
                     $current = $tree
@@ -174,16 +175,10 @@ function New-Index {
 
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name Remove -Value {
         param(
-            [Parameter(Mandatory = $true,
-                       ParameterSetName = 'Object')]
+            [Parameter(Mandatory = $true)]
             [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
             [Hashtable]
                 $InputObject,
-
-            [Parameter(Mandatory = $true,
-                       ParameterSetName = 'Index')]
-            [Int]
-                $Index,
 
             [Parameter(Mandatory = $false)]
             [Bool]
@@ -191,16 +186,7 @@ function New-Index {
         )
 
         $this.Modified = $true
-
-        if ($InputObject)
-        {
-            [void]$this.idx.Entries.Remove($InputObject)
-        }
-        else
-        {
-            $InputObject = $this.idx.Entries[$Index]
-            [void]$this.idx.Entries.RemoveAt($Index)
-        }
+        [void]$this.idx.Entries.Remove($InputObject)
 
         # Cache Management
         #   Entry object may have been removed from the cache by an Add operation
@@ -317,7 +303,7 @@ function New-PrivateIndex {
         Entries = New-Object System.Collections.ArrayList
 
         # Tree cache object.
-        TREE    = @{}
+        TREE    = New-CacheTree
 
         # The commit object that is represented by the index.
         HEAD    = [String]::Empty
@@ -341,7 +327,7 @@ function New-CacheTree {
         Name     = [String]::Empty
 
         # Object type.
-        Type     = [VersionControl.Repository.Index.ObjectType]::TreeCache
+        Type     = [VersionControl.Repository.Index.ObjectType]::Cache
 
         # Relative path of this tree from it's parent.
         Path     = [String]::Empty
