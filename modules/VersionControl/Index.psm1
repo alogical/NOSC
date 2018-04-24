@@ -82,7 +82,7 @@ function New-Index {
         return $this.idx.HEAD
     }
 
-    Add-Member -InputObject $Index -MemberType ScriptMethod -Name LoadCommit -Value {
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name Checkout -Value {
         param(
             # A commit tree.
             [Parameter(Mandatory = $true)]
@@ -136,12 +136,24 @@ function New-Index {
             [void]$this.Remove($previous, $true)
         }
 
-        # Invalidate the Cache Tree for this object
+        # Cache Tree for this object
         #   The Cache Tree may also be invalidated by Repository.Status()
         $path_component = $InputObject.Path.Split('\')
         $current = $this.TREE
         for ($i = 0; $i -lt $path_component.Count; $i++)
         {
+            # Create Empty Cache Tree
+            if ($current.Subtrees.Count -eq 0)
+            {
+                $new = New-CacheTree
+                $new.Path  = $path_component[$i]
+                $new.Count = -1
+                [void]$current.Subtrees.Add($new)
+                $current = $new
+                continue
+            }
+
+            # Invalidate Tree
             foreach ($tree in $current.Subtrees)
             {
                 if ($tree.Path -eq $path_component[$i])
