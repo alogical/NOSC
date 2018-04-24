@@ -84,15 +84,18 @@ function New-Index {
 
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name Checkout -Value {
         param(
-            # A commit tree.
+            # A commit object ID.
             [Parameter(Mandatory = $true)]
-            [Object]
+            [String]
                 $Commit
         )
 
+        $object = Get-Content $this.FileSystem.Get($Commit).FullName -Raw
+        $c      = ConvertFrom-PSObject (ConvertFrom-Json $object)
+
         $this.idx = New-PrivateIndex
-        $this.idx.TREE   = ConvertTo-CacheTree $Commit.Tree
-        $this.idx.Entries = Build-Cache $Commit.Tree $this.idx.TREE
+        $this.idx.TREE   = ConvertTo-CacheTree $c.Tree $Commit
+        $this.idx.Entries = Build-Cache $c.Tree $this.idx.TREE
 
         $this.RefreshCache()
     }
@@ -117,7 +120,8 @@ function New-Index {
 
         # Previous entry if the added entry updates an existing entry
         $previous = $null
-        $this.Modified = $true
+        $this.Modified   = $true
+        $this.idx.Commit = $false
 
         # Cache the object path
         if (!$this.PathCache.Contains($InputObject.Path))
@@ -185,7 +189,8 @@ function New-Index {
                 $CacheUpdated = $false
         )
 
-        $this.Modified = $true
+        $this.Modified   = $true
+        $this.idx.Commit = $false
         [void]$this.idx.Entries.Remove($InputObject)
 
         # Cache Management
@@ -299,6 +304,9 @@ Import-Module "$AppPath\modules\Common\Objects.psm1"
 
 function New-PrivateIndex {
     $idx = @{
+        # Represents if the objects in the index have been committed or not.
+        Commit  = $false
+
         # Collection of entries representing tracked files in the working directory.
         Entries = New-Object System.Collections.ArrayList
 
@@ -357,23 +365,31 @@ function Build-Cache {
 
     foreach ($t in $Tree.Subtrees)
     {
-        $child = Convert-Tree $t
+        $object = Get-Content $this.FileSystem.Get($t).FullName -Raw
+        $sub   = ConvertFrom-PSObject (ConvertFrom-Json $object)
+        $child  = ConvertTo-CacheTree $sub $t
         [void]$Cache.Subtrees.Add( $child )
-        Build-Cache $t $child
+        Build-Cache $sub $child
     }
 }
 
 function ConvertTo-CacheTree {
     param(
+        # Repository tree object.
         [Parameter(Mandatory = $true)]
         [Hashtable]
-            $Tree
+            $Tree,
+
+        # SHA1 Object ID of the tree.
+        [Parameter(Mandatory = $true)]
+        [String]
+            $Name
     )
 
-    $t = New-CachedTree
-    $t.Name = $Tree.Name
+    $t = New-CacheTree
+    $t.Name = $Name
     $t.Path = $Tree.Path
-    $t.Count = $Tree.Count
+    $t.Count = $Tree.EntryCount
 
     return $t
 }

@@ -129,9 +129,6 @@ function New-Repository {
         [System.Text.RegularExpressions.Match]$match = $Regex.Head.Match($this.HEAD)
         $ref = $match.Groups['path'].Value
         $ObjectID > (Join-Path $this.Repository $ref)
-
-        $this.Index.idx.HEAD = $ObjectID
-        $this.Index.Write()
     }
 
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetHead -Value {
@@ -353,6 +350,12 @@ function New-Repository {
                 $Message
         )
 
+        if ($this.Index.idx.Commit)
+        {
+            # Abort - No changes have been added to the index for the commit.
+            return
+        }
+
         $commit = New-Commit
         [void]$commit.Parents.Add($this.GetHeadOid())
         $commit.Author  = $Author
@@ -361,6 +364,12 @@ function New-Repository {
 
         $oid = $this.FileSystem.WriteBlob( [System.Text.ASCIIEncoding]::UTF8.GetBytes((ConvertTo-Json $commit -Depth 100)) )
         $this.WriteHeadOid($oid)
+
+        # Update the Index
+        $this.Index.Checkout($oid)
+        $this.Index.idx.HEAD   = $oid
+        $this.Index.idx.Commit = $true
+        $this.Index.Write()
 
         return $oid
     }
