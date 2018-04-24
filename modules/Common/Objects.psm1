@@ -104,7 +104,7 @@ function New-SecureHashProvider {
             [byte[]]
                 $InputBytes
         )
-        $this.ComputeHash($InputBytes)
+        [void]$this.ComputeHash($InputBytes)
         return $this.OutString
     }
 

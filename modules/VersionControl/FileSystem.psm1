@@ -113,9 +113,21 @@ function New-FileManager {
             [void]([System.IO.Directory]::CreateDirectory($object_cache))
         }
 
-        $Stream.BaseStream.Position = 0
+        $base = $Stream.BaseStream
+        $base.Position = 0
+        $buffer = New-Object byte[] 512
+        $nbytes = 0
+        $index  = 0
         $writer = [System.IO.BinaryWriter]::new( [System.IO.File]::Open($object_path, [System.IO.FileMode]::Create) )
-        $writer.Write($Stream.ReadToEnd())
+
+        do
+        {
+            $nbytes = $base.Read($buffer, $index, 512)
+            $writer.Write($buffer, 0, $nbytes)
+            $index += $nbytes
+        }
+        while ($nbytes -eq 512)
+
         $writer.Flush()
         $writer.Close()
 

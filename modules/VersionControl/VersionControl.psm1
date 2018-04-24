@@ -120,6 +120,20 @@ function New-Repository {
         return (Get-Content (Join-Path $this.Repository $ref))
     }
 
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name WriteHeadOid -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [String]
+                $ObjectID
+        )
+        [System.Text.RegularExpressions.Match]$match = $Regex.Head.Match($this.HEAD)
+        $ref = $match.Groups['path'].Value
+        $ObjectID > (Join-Path $this.Repository $ref)
+
+        $this.Index.idx.HEAD = $ObjectID
+        $this.Index.Write()
+    }
+
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetHead -Value {
         $object = Get-Content $this.FileSystem.Get($this.GetHeadOid()) -Raw
         return (ConvertFrom-PSObject (ConvertFrom-Json $object))
@@ -345,7 +359,10 @@ function New-Repository {
         $commit.Message = $Message
         $commit.Tree    = Build-Commit $this.Index.Entries $this.Index.TREE $this.FileSystem
 
-        return $this.FileSystem.WriteBlob( (ConvertTo-Json $commit).GetBytes() )
+        $oid = $this.FileSystem.WriteBlob( [System.Text.ASCIIEncoding]::UTF8.GetBytes((ConvertTo-Json $commit -Depth 100)) )
+        $this.WriteHeadOid($oid)
+
+        return $oid
     }
 
     return $Repository
@@ -485,7 +502,7 @@ function Build-Commit {
     $root.EntryCount = $root.Entries.Count
     $root.TreeCount  = $root.Subtrees.Count
 
-    return $tree
+    return $root
 }
 
 function Build-Tree {
@@ -536,7 +553,7 @@ function Build-Tree {
 
     [void]$Current.Pop()
 
-    return $FileSystem.Write( (ConvertTo-Json $tree) )
+    return $FileSystem.WriteBlob( [System.Text.ASCIIEncoding]::UTF8.GetBytes((ConvertTo-Json $tree -Depth 100)) )
 }
 
 function New-Commit {
