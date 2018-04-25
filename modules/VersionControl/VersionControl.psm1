@@ -143,7 +143,7 @@ function New-Repository {
     .DESCRIPTION
         Used to initialize a standard repository's hidden .vc sub-directory structure.
     #>
-    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name InitStd -Value {
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name InitLocal -Value {
         param(
             [Parameter(Mandatory = $true)]
             [ValidateScript({[System.IO.Directory]::Exists($_)})]
@@ -171,7 +171,7 @@ function New-Repository {
     .DESCRIPTION
         Used to initialize a bare repository which has no working directory.
     #>
-    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name InitBare -Value {
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name InitRemote -Value {
         param(
             [Parameter(Mandatory = $true)]
             [ValidateScript({[System.IO.Directory]::Exists($_)})]
@@ -339,6 +339,15 @@ function New-Repository {
         return $this.Index.Remove($entry)
     }
 
+    <#
+    .SYNOPSIS
+        Commits changes tracked in the repository index.
+
+    .DESCRIPTION
+        Saves modified objects to the content addressable file system and creates a commit
+        object which represents the state of the saved changes to the working directory.  The
+        HEAD of the branch is pointed to the new commit object, and the index updated.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Commit -Value {
         param(
             [Parameter(Mandatory = $true)]
@@ -372,6 +381,94 @@ function New-Repository {
         $this.Index.Write()
 
         return $oid
+    }
+
+    <#
+    .SYNOPSIS
+        Logs commits to a branch.
+
+    .DESCRIPTION
+        Updates the branch and head log for a commit.
+
+          Format:
+          <prev_sha1> <new_sha1> <user_name> <email_addr> <utc_time> <utc_offset> checkout: <message_line1>
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogCommit -Value {
+
+    }
+
+    <#
+    .SYNOPSIS
+        Starts a new branch log.
+
+    .DESCRIPTION
+        Creates a new branch log and adds the first line of log specifying from
+        from which branch the target branch was created.
+
+          Format:
+          0000000000000000000000000000000000000000 <HEAD_sha1> <user_name> <email_addr> <utc_time> <utc_offset> branch: Created from <source_branch_name>
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogBranch -Value {
+
+    }
+
+    <#
+    .SYNOPSIS
+        Logs moving between branches.
+
+    .DESCRIPTION
+        Updates the HEAD log when moving from one branch to another.
+          Format:
+          <from_sha1> <to_sha1> <user_name> <email_addr> <utc_time> <utc_offset> checkout: moving from <source_branch_name> to <destination_branch_name>
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogCheckout -Value {
+
+    }
+
+    <#
+    .SYNOPSIS
+        Logs the initialization of a repository by cloning another repository.
+
+    .DESCRIPTION
+        Updates the HEAD log with information about the source repository that
+        was used during the clone operation.
+
+        NOTE: This will be the first log entry for the HEAD and ref logs created
+        during the clone operation.
+
+          Format:
+          0000000000000000000000000000000000000000 <HEAD_sha1> <user_name> <email_addr> <utc_time> <utc_offset> clone: from <source_repository_uri>
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogClone -Value {
+
+    }
+
+    <#
+    .SYNOPSIS
+        Logs merges of a branch into another branch.
+
+    .DESCRIPTION
+        Updates the branch and head log for a merge.
+
+          Format:
+          <prev_sha1> <new_sha1> <user_name> <email_addr> <utc_time> <utc_offset> merge <source_branch_name>: Merge made by the <strategy_type> strategy.
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogMerge -Value {
+
+    }
+
+    <#
+    .SYNOPSIS
+        Logs pulling changes from a remote branch into a local branch.
+
+    .DESCRIPTION
+        Updates the branch and head log for a pull.
+
+          Format:
+          <prev_sha1> <new_sha1> <user_name> <email_addr> <utc_time> <utc_offset> pull: Fast-forward
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogPull -Value {
+
     }
 
     return $Repository
