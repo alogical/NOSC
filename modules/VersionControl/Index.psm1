@@ -110,6 +110,108 @@ function New-Index {
         }
     }
 
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name SummarizeTrees -Value {
+        # Walk entries to build reference list.
+        $walked = @{
+            root = New-Object System.Collections.ArrayList
+        }
+        foreach ($entry in $this.idx.Entries)
+        {
+            $parent = Split-Path $entry.Path -Parent
+            if ([String]::IsNullOrEmpty($parent))
+            {
+                [void]$walked.root.Add($entry.Name)
+                continue
+            }
+            if (!$walked.Contains( $parent ))
+            {
+                $walked.Add($parent, (New-Object System.Collections.ArrayList))
+            }
+            [void]$walked[$parent].Add($entry.Name)
+        }
+        foreach ($entry in $walked.GetEnumerator())
+        {
+            $entry.Value.Sort()
+            $walked[$entry.Key] = $this.FileSystem.ShaProvider.HashString( ($entry.Value -join [String]::Empty) )
+        }
+    }
+
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name InvalidateTree -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Path
+        )
+
+        # Cache Tree for this object
+        #   The Cache Tree may also be invalidated by Repository.Status()
+        $path_component = @((Split-Path $Path -Parent).Split('\'))
+        $current = $this.TREE
+        $current.Count = -1
+        foreach ($dir in $path_component)
+        {
+            # Create Empty Cache Tree
+            if ($current.Subtrees.Count -eq 0 -and ![String]::IsNullOrEmpty($dir))
+            {
+                $new = New-CacheTree
+                $new.Path  = $dir
+                $new.Count = -1
+                [void]$current.Subtrees.Add($new)
+                $current = $new
+                continue
+            }
+
+            # Invalidate Tree
+            foreach ($tree in $current.Subtrees)
+            {
+                if ($tree.Path -eq $dir)
+                {
+                    $tree.Count = -1
+                    $current = $tree
+                    break
+                }
+            }
+        }
+    }
+
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name RevalidateTree -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Path
+        )
+
+        # Cache Tree for this object
+        #   The Cache Tree may also be invalidated by Repository.Status()
+        $path_component = @((Split-Path $Path -Parent).Split('\'))
+        $current = $this.TREE
+        $current.Count = -1
+        foreach ($dir in $path_component)
+        {
+            # Create Empty Cache Tree
+            if ($current.Subtrees.Count -eq 0 -and ![String]::IsNullOrEmpty($dir))
+            {
+                $new = New-CacheTree
+                $new.Path  = $dir
+                $new.Count = -1
+                [void]$current.Subtrees.Add($new)
+                $current = $new
+                continue
+            }
+
+            # Invalidate Tree
+            foreach ($tree in $current.Subtrees)
+            {
+                if ($tree.Path -eq $dir)
+                {
+                    $tree.Count = -1
+                    $current = $tree
+                    break
+                }
+            }
+        }
+    }
+
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name Add -Value {
         param(
             [Parameter(Mandatory = $true)]
@@ -140,35 +242,9 @@ function New-Index {
             [void]$this.Remove($previous, $true)
         }
 
-        # Cache Tree for this object
+        # Invalidate Cache Tree path for this object
         #   The Cache Tree may also be invalidated by Repository.Status()
-        $path_component = @((Split-Path $InputObject.Path -Parent).Split('\'))
-        $current = $this.TREE
-        $current.Count = -1
-        foreach ($dir in $path_component)
-        {
-            # Create Empty Cache Tree
-            if ($current.Subtrees.Count -eq 0 -and ![String]::IsNullOrEmpty($dir))
-            {
-                $new = New-CacheTree
-                $new.Path  = $dir
-                $new.Count = -1
-                [void]$current.Subtrees.Add($new)
-                $current = $new
-                continue
-            }
-
-            # Invalidate Tree
-            foreach ($tree in $current.Subtrees)
-            {
-                if ($tree.Path -eq $dir)
-                {
-                    $tree.Count = -1
-                    $current = $tree
-                    break
-                }
-            }
-        }
+        $this.InvalidateTree($InputObject.Path)
 
         # Save changes to the index.
         $i = $this.idx.Entries.Add($InputObject)
@@ -238,6 +314,10 @@ function New-Index {
         return [VersionControl.Repository.Index.CompareResult]::Modified
     }
 
+    Add-Member -InputObject $Index -MemberType ScriptProperty -Name Summary -Value {
+        return (Get-Summary $this.idx.Entries $this.FileSystem.ShaProvider)
+    }
+
     Add-Member -InputObject $Index -MemberType ScriptProperty -Name Entries -Value {
         return (Write-Output -NoEnumerate $this.idx.Entries)
     }
@@ -285,6 +365,25 @@ function New-Entry {
         Path   = [String]::Empty
     }
     return $entry
+}
+
+function Get-Summary {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.ArrayList]
+            $Entries,
+
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]
+            $ShaProvider
+    )
+    $list = New-Object System.Text.ArrayList
+    for ($i = 0; $i -lt $Entries.Count; $i++)
+    {
+        [void]$list.Add($Entries[$i].Name)
+    }
+    $list.Sort()
+    return $ShaProvider.HashString( ($list -join [String]::Empty) )
 }
 
 Export-ModuleMember -Function *

@@ -429,15 +429,16 @@ function New-Repository {
         {
             $commit = ConvertFrom-Json (Get-Content $head.FullName -Raw)
         }
+        else
+        {
+            return $this.Index.Remove($entry)
+        }
 
         # Get Tree object for this blob
-        # Root Tree
         if ($Entry.Path -notmatch '\\')
         {
             $tree = $commit.Tree
         }
-
-        # Sub Tree
         else
         {
             $path = @(Split-Path $Entry.Path -Parent)
@@ -452,19 +453,22 @@ function New-Repository {
         # Get Parent blob object ID from Tree
         if ($tree)
         {
+            $i = 0
             foreach ($item in $tree.Entries)
             {
                 if ($item.Path -eq $Entry.Path)
                 {
-                    return $this.Index.Add($item)
+                    $i = $this.Index.Add( (ConvertFrom-PSObject $item) )
+                    break
                 }
             }
-            return $this.Index.Remove($entry)
+            if ($i -and $commit.Summary -eq $this.Index.Summary)
+            {
+                $this.Index.Modified = $false
+                return $i
+            }
         }
-        else
-        {
-            return $this.Index.Remove($entry)
-        }
+        return $this.Index.Remove($Entry)
     }
 
     <#
@@ -515,6 +519,7 @@ function New-Repository {
         $commit.Author  = $this.User
         $commit.Email   = $this.Email
         $commit.Message = $Message
+        $commit.Summary = $this.Index.Summary
         $commit.Tree    = Build-Commit $this.Index.Entries $this.Index.TREE $this.FileSystem
 
         $oid = $this.FileSystem.WriteBlob( [System.Text.ASCIIEncoding]::UTF8.GetBytes((ConvertTo-Json $commit -Depth 100)) )
@@ -524,6 +529,7 @@ function New-Repository {
         $this.Index.Checkout($oid)
         $this.Index.idx.HEAD   = $oid
         $this.Index.idx.Commit = $true
+        $this.Index.Modified   = $false
         $this.Index.Write()
 
         # Update the Logs
@@ -690,8 +696,8 @@ function New-Repository {
         }
     }
 
-    $Repository.User      = $config.User
-    $Repository.Email     = $config.Email
+    $Repository.User  = $config.User
+    $Repository.Email = $config.Email
 
     return $Repository
 }
@@ -812,6 +818,7 @@ function Build-Commit {
     # Initialize root tree
     $root = New-Tree
     $root.Entries = $walked.root
+    $root.Summary = Get-Summary $root.Entries $FileSystem.ShaProvider
 
     # Recursively build subtrees
     foreach ($cache in $TreeCache.Subtrees)
@@ -862,6 +869,7 @@ function Build-Tree {
         
     # Get list of entries learned from the index.
     $tree.Entries = $walked[ ($current.ToArray() -join '\') ]
+    $tree.Summary = Get-Summary $tree.Entries $FileSystem.ShaProvider
 
     foreach ($item in $Cache.Subtrees)
     {
@@ -889,6 +897,10 @@ function New-Commit {
     $commit = @{
         # SHA1 identifier of the tree that represents the files of this commit.
         Tree      = [String]::Empty
+
+        # SHA1 summary of all entry oid's that are written in this commit.
+        #  Provides for quick index comparison against a commit.
+        Summary   = [String]::Empty
 
         # SHA1 identifiers of the commits that preceded this commit.
         Parents   = New-Object System.Collections.ArrayList
@@ -927,6 +939,9 @@ function New-Tree {
         # Pre-computed subtree object count so array.count doesn't need to be
         # called, which requires a O(n) linear operation.
         TreeCount = [Int32]0
+
+        # Summary SHA1 of the oids for the entries contained within this tree.
+        Summary   = [String]::Empty
 
         # The list of entries contained by this tree.
         Entries = New-Object System.Collections.ArrayList
