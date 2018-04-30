@@ -33,6 +33,12 @@ namespace VersionControl {
 ###############################################################################
 
 function New-Repository {
+    param(
+        [Parameter(Mandatory = $false)]
+        [String]
+            $ConfigPath
+    )
+
     $Repository = [PSCustomObject]@{
         # Branch index object.
         Index = New-Index
@@ -43,13 +49,21 @@ function New-Repository {
         # The repository sub file system.
         Repository       = [String]::Empty
 
-        # The most recent commit object id for this branch.
+        # The HEAD ref for this branch.
         HEAD  = [String]::Empty
 
         # Content addressable file system manager.
         FileSystem = New-FileManager
+
+        # User name supplied for commits and merges.
+        User = [String]::Empty
+
+        # Email address of user.
+        Email = [String]::Empty
+
+        # Repository configuration path.
+        Config = $ConfigPath
     }
-    $Repository.Index.FileSystem = $Repository.FileSystem
 
     <#
     .SYNOPSIS
@@ -134,6 +148,71 @@ function New-Repository {
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetHead -Value {
         $object = Get-Content $this.FileSystem.Get($this.GetHeadOid()) -Raw
         return (ConvertFrom-PSObject (ConvertFrom-Json $object))
+    }
+
+    ## Configuration Control --------------------------------------------------
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name InitConfig -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [String]
+                $ConfigPath,
+
+            [Parameter(Mandatory = $false)]
+            [String]
+                $User,
+
+            [Parameter(Mandatory = $false)]
+            [String]
+                $Email
+        )
+
+        $config = @{
+            User      = $env:USERNAME
+            Email     = [String]::Empty
+        }
+
+        if (![String]::IsNullOrEmpty($User))
+        {
+            $config.User = $User
+        }
+
+        if (![String]::IsNullOrEmpty($Email))
+        {
+            $config.Email = $Email
+        }
+
+        $this.Config = $ConfigPath
+
+        ConvertTo-Json $config > $ConfigPath
+        return $config
+    }
+
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetUser -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [String]
+                $User
+        )
+
+        $config = ConvertFrom-Json (Get-Content $this.Config -Raw)
+        $config.User = $User
+        $this.User   = $User
+
+        ConvertTo-Json $config > $this.Config
+    }
+
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetEmail -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Email
+        )
+
+        $config = ConvertFrom-Json (Get-Content $this.Config -Raw)
+        $config.Email = $Email
+        $this.Email   = $Email
+
+        ConvertTo-Json $config > $this.Config
     }
 
     <#
@@ -301,7 +380,7 @@ function New-Repository {
         )
 
         # Revert to the previous commit entry if available.
-        $head = $this.FileSystem.Get($this.HEAD)
+        $head = $this.FileSystem.Get($this.GetHeadOid())
         if ($head)
         {
             $commit = ConvertFrom-Json (Get-Content $head.FullName -Raw)
@@ -352,10 +431,6 @@ function New-Repository {
         param(
             [Parameter(Mandatory = $true)]
             [String]
-                $Author,
-
-            [Parameter(Mandatory = $true)]
-            [String]
                 $Message
         )
 
@@ -365,9 +440,12 @@ function New-Repository {
             return
         }
 
+        $parent = $this.GetHeadOid()
+
         $commit = New-Commit
-        [void]$commit.Parents.Add($this.GetHeadOid())
-        $commit.Author  = $Author
+        [void]$commit.Parents.Add($parent)
+        $commit.Author  = $this.User
+        $commit.Email   = $this.Email
         $commit.Message = $Message
         $commit.Tree    = Build-Commit $this.Index.Entries $this.Index.TREE $this.FileSystem
 
@@ -380,6 +458,15 @@ function New-Repository {
         $this.Index.idx.Commit = $true
         $this.Index.Write()
 
+        # Update the Logs
+        $this.LogCommit(
+            $parent,
+            $oid,
+            $commit.Date,
+            $commit.UtcOffset,
+            ($commit.Message.Split("`n"))[0]
+        )
+
         return $oid
     }
 
@@ -391,10 +478,44 @@ function New-Repository {
         Updates the branch and head log for a commit.
 
           Format:
-          <prev_sha1> <new_sha1> <user_name> <email_addr> <utc_time> <utc_offset> checkout: <message_line1>
+          <prev_sha1> <new_sha1> <user_name> <email_addr> <utc_time> <utc_offset> commit: <message_line1>
     #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogCommit -Value {
+        param(
+            # Parent commit SHA1 object ID.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Parent,
 
+            # Current commit SHA1 object ID.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Commit,
+
+            # UTC time of commit.  File time format.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $UtcTime,
+
+            # UTC timezone offset.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $UtcOffset,
+
+            # First line of commit message. Used as title of the commit.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Message
+        )
+
+        # Resolve logging paths.
+        $head_path = $this.HEAD -replace "ref: refs\/heads\/", "" -replace "\/", "\"
+        $LogBranch = Join-Path (Join-Path $this.Repository logs\refs\heads) $head_path
+        $LogHead   = Join-Path $this.Repository logs\HEAD
+
+        $msg = "{0} {1} {2} <{3}> {4} {5} commit: {6}" -f $Parent, $Commit, $this.User, $this.Email, $UtcTime, $UtcOffset, $Message
+        $msg >> $LogBranch
+        $msg >> $LogHead
     }
 
     <#
@@ -470,6 +591,39 @@ function New-Repository {
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogPull -Value {
 
     }
+
+    # Set repository content addressable file system.
+    $Repository.Index.FileSystem = $Repository.FileSystem
+
+    # Load configuration user information
+    if (![String]::IsNullOrEmpty($ConfigPath))
+    {
+        if (Test-Path $ConfigPath)
+        {
+            $config = ConvertFrom-Json (Get-Content $ConfigPath -Raw)
+            $Repository.Config = $ConfigPath
+        }
+        else
+        {
+            $config = $Repository.InitConfig($ConfigPath)
+        }
+    }
+    else
+    {
+        $default = Join-Path $InvocationPath config
+        if (Test-Path $default)
+        {
+            $config = ConvertFrom-Json (Get-Content $default -Raw)
+            $Repository.Config = $default
+        }
+        else
+        {
+            $config = $Repository.InitConfig($default)
+        }
+    }
+
+    $Repository.User      = $config.User
+    $Repository.Email     = $config.Email
 
     return $Repository
 }
@@ -665,19 +819,25 @@ function Build-Tree {
 function New-Commit {
     $commit = @{
         # SHA1 identifier of the tree that represents the files of this commit.
-        Tree    = [String]::Empty
+        Tree      = [String]::Empty
 
         # SHA1 identifiers of the commits that preceded this commit.
-        Parents = New-Object System.Collections.ArrayList
+        Parents   = New-Object System.Collections.ArrayList
 
         # The name of the person who authored this commit.
-        Author  = [String]::Empty
+        Author    = [String]::Empty
+
+        # The name of the person who authored this commit.
+        Email     = [String]::Empty
         
         # Message describing the changes and purpose of this commit.
-        Message = [String]::Empty
+        Message   = [String]::Empty
 
         # Date the commit object was created.
-        Date    = [DateTime]::Now.ToFileTimeUtc()
+        Date      = [DateTime]::Now.ToFileTimeUtc()
+
+        # UTC timezone offset
+        UtcOffset = Get-UtcOffset
     }
 
     return $commit
@@ -707,4 +867,18 @@ function New-Tree {
     }
 
     return $tree
+}
+
+function Get-UtcOffset {
+    $tz = Get-TimeZone
+    $offset = $tz.GetUtcOffset( (Get-Date) )
+
+    if ($offset.Hours -gt 0)
+    {
+        return ("+{0:d2}{1:d2}" -f $offset.Hours, $offset.Minutes)
+    }
+    else
+    {
+        return ("{0:d2}{1:d2}" -f $offset.Hours, $offset.Minutes)
+    }
 }
