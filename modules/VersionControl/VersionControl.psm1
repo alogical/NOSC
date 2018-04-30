@@ -384,6 +384,31 @@ function New-Repository {
         if ($head)
         {
             $commit = ConvertFrom-Json (Get-Content $head.FullName -Raw)
+        }
+
+        # Get Tree object for this blob
+        # Root Tree
+        if ($Entry.Path -notmatch '\\')
+        {
+            $tree = $commit.Tree
+        }
+
+        # Sub Tree
+        else
+        {
+            $path = @(Split-Path $Entry.Path -Parent)
+            $path_stack = New-Object System.Collections.Stack
+            for ($i = $path.Count - 1; $i -ge 0; $i--)
+            {
+                $path_stack.Push($path[$i])
+            }
+            $tree = Get-SubTree -Stack $path_stack -Commit $commit -FileSystem $this.FileSystem
+        }
+
+        # Get Parent blob object ID from Tree
+
+        if ($head)
+        {
             foreach ($item in $commit.Entries)
             {
                 if ($item.Path -eq $Entry.Path)
@@ -867,6 +892,40 @@ function New-Tree {
     }
 
     return $tree
+}
+
+function Get-SubTree {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Stack]
+            $Stack,
+
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]
+            $Tree,
+
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]
+            $FileSystem
+    )
+
+    if ($Stack.Count -eq 0)
+    {
+        return $Tree
+    }
+
+    $current = $Stack.Pop()
+
+    foreach ($oid in $Tree.Subtrees)
+    {
+        $subtree = ConvertFrom-Json (Get-Content $FileSystem.Get($oid) -Raw)
+        if ($subtree.Path -eq $current)
+        {
+            return Get-SubTree -Stack $Stack -Tree $subtree -FileSystem $FileSystem
+        }
+    }
+
+    throw (New-Object System.ArgumentOutOfRangeException("Sub-tree path is invalid or sub-tree doesn't exist."))
 }
 
 function Get-UtcOffset {
