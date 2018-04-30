@@ -1,9 +1,110 @@
-﻿<#
+<#
 .SYNOPSIS
     Custom TreeView control with display and filter settings.
 
 .DESCRIPTION
+    A TreeView control wrapped in a TabContainer that provides data grouping
+    and sorting functionality built in.
 
+.NOTES
+    #
+    # Displaying Data
+    #
+    A new SortedTreeView control is instantiated through a call to the
+    Intialize-Components function.
+    
+    The TreeView can be populated by setting the $container.Tree.Source
+    property.  Data is expected to be supplied in a flat data table format
+    of record objects, eg. no nested data structures (think .csv file type
+    data).  The Source property is a System.Collections.ArrayList, and can
+    accept a large array of data using the Source.AddRange([array]) method.
+    
+    After the TreeView's Source collection has been populated with data, it
+    can be displayed by prompting the user to configure the view settings with
+    $container.Settings.PromptUser().  If view settings have already been
+    configured or loaded than data can be displayed directly by calling the
+    $container.Settings.Apply() method.
+    
+    #
+    # Customization
+    #
+    Functionality of the TreeView control can be further extended by passing
+    Definition objects for TreeView, TreeNode(Group), and TreeNode(Data).
+    
+    The definition objects must contain all of the hashtable collections
+    specified in the format, even if the collection is empty.  Otherwise, an
+    error will be thrown during the construction of the objects.
+    
+    The 'Properties' collection of the definition may only contain property
+    names for properties that exist by default on the object as defined by the
+    System.Windows.Forms class of the object.  Similiarly, any value specified
+    for a property must meet the expectations and requirements for the property
+    as defined by the objects .Net class.
+    
+    The 'NoteProperties' collection of the definition cannot contain the same
+    name of an object member that is already defined for the object by it's .Net
+    class.  NoteProperties are *attached* to the object after it's creation by
+    Powershell, and can contain any value.
+    
+    The 'Methods' collection of the definition cannot have the same name as any
+    object members defined by the object's .Net class or any of the previoulsy
+    defined NoteProperties.  The Methods collection expects scriptblocks for
+    values, and will throw an error otherwise.
+    
+    The 'Handlers' collection of the definition may only contain names of event
+    defined by the objects .Net class.  The values for each entry must be a
+    scriptblock.
+    
+    The only difference between the definition of a TreeView and a TreeNode is
+    the 'Processors' collection.  Node processors are scriptblocks called against
+    each node during it's creation, allowing the node to be further customized
+    at runtime based on the data used to create the node.  The key name of the
+    processor is only locally significant to the collection itself, and may only
+    contain scriptblocks as values.
+    
+    The NoteProperty names 'Static', 'Source', and 'DataNodes' are part of the
+    SortedTreeView Architecture and may not be used in the NoteProperties
+    collection of a TreeView definition.
+    
+        The TreeView Definition object is constructed by the caller and passed
+        to Initialize-Components -TreeDefinition property.
+        -- Format:
+            [PSCustomObject]@{
+                # [System.Windows.Forms.TreeView] Built-In Properties
+                Properties     = @{}
+                
+                # Powershell Custom NoteProperties
+                NoteProperties = @{}
+                
+                # --- SCRIPTBLOCK VALUES --- #
+                # Powershell ScriptMethod Definitions
+                Methods        = @{}
+                
+                # [System.Windows.Forms.TreeView] Event Handlers
+                Handlers       = @{}
+            }
+            
+        The TreeNode Definition objects for Group nodes and Data nodes use
+        the same definition format.  These definition objects are passed to
+        the -GroupDefinition and -NodeDefinition parameters respectfully.
+         -- Format:
+            [PSCustomObject]@{
+                # [System.Windows.Forms.TreeNode] Built-In Properties
+                Properties     = @{}
+                
+                # Powershell Custom NoteProperties
+                NoteProperties = @{}
+
+                # --- SCRIPTBLOCK VALUES --- #
+                # Powershell ScriptMethod Definitions
+                Methods        = @{}
+
+                # [System.Windows.Forms.TreeNode] Event Handlers
+                Handlers       = @{}
+
+                # Processing Methods. Used to customize a TreeNode during creation.
+                Processors     = @{}
+            }
 
 .NOTES
     Author: Daniel K. Ives
@@ -39,33 +140,40 @@ function Initialize-Components {
             [AllowNull()]
             [System.Windows.Forms.MenuStrip]
             $MenuStrip,
-
+        
+        # Collection of function callbacks executed by the application at runtime.
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
             [System.Collections.ArrayList]
             $OnLoad,
 
+        # Title of the TabPage containing the TreeView.
         [Parameter(Mandatory = $false)]
             [String]
             $Title = "TreeView",
 
+        # The data to be displayed by the TreeView.
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
             [System.Collections.ArrayList]
             $Source,
 
+        # Collection of images to be used for TreeNodes.
         [Parameter()]
             [System.Windows.Forms.ImageList]
             $ImageList,
 
+        # TreeView customization definition.
         [Parameter()]
             [PSCustomObject]
             $TreeDefinition,
 
+        # Group TreeNode customization definition.
         [Parameter()]
             [PSCustomObject]
             $GroupDefinition,
 
+        # Data TreeNode customization definition.
         [Parameter()]
             [PSCustomObject]
             $NodeDefinition
@@ -131,29 +239,31 @@ $Static = @{}
 $Static.ProcessDefinition = {
     param([System.Windows.Forms.TreeNode]$Node, [Object]$Record, [Object]$Definition)
 
-    # CUSTOM PRE-PROCESSORS
-    foreach ($processor in $Definition.Processors.Values) {
-        & $processor $Node $Record | Out-Null
-    }
+    if ($Definition) {
+        # CUSTOM PRE-PROCESSORS
+        foreach ($processor in $Definition.Processors.Values) {
+            & $processor $Node $Record | Out-Null
+        }
 
-    # CUSTOM PROPERTIES
-    foreach ($property in $Definition.NoteProperties.GetEnumerator()) {
-        Add-Member -InputObject $Node -MemberType NoteProperty -Name $property.Key -Value $property.Value
-    }
+        # CUSTOM PROPERTIES
+        foreach ($property in $Definition.NoteProperties.GetEnumerator()) {
+            Add-Member -InputObject $Node -MemberType NoteProperty -Name $property.Key -Value $property.Value
+        }
 
-    # BUILT-IN PROPERTIES - late binding (dynamic)
-    foreach ($property in $Definition.Properties.GetEnumerator()) {
-        $Node.($property.Key) = $property.Value
-    }
+        # BUILT-IN PROPERTIES - late binding (dynamic)
+        foreach ($property in $Definition.Properties.GetEnumerator()) {
+            $Node.($property.Key) = $property.Value
+        }
 
-    # CUSTOM METHODS
-    foreach ($method in $Definition.Methods.GetEnumerator()) {
-        Add-Member -InputObject $Node -MemberType ScriptMethod -Name $method.Key -Value $method.Value
-    }
+        # CUSTOM METHODS
+        foreach ($method in $Definition.Methods.GetEnumerator()) {
+            Add-Member -InputObject $Node -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+        }
 
-    # EVENT HANDLERS - late binding (dynamic)
-    foreach ($handler in $Definition.Handlers.GetEnumerator()) {
-        $Node.("Add_$($handler.Key)")($handler.Value)
+        # EVENT HANDLERS - late binding (dynamic)
+        foreach ($handler in $Definition.Handlers.GetEnumerator()) {
+            $Node.("Add_$($handler.Key)")($handler.Value)
+        }
     }
 }
 $Static.TreeNodeChecked = {
@@ -339,24 +449,27 @@ $Static.NewDataBucket = {
             # DEFAULT STATIC METHODS
             Add-Member -InputObject $node -MemberType ScriptMethod -Name SetChecked -Value $Static.TreeNodeChecked
 
-            # CUSTOM PRE-PROCESSORS
-            foreach ($processor in $this.Definition.Processors.Values) {
-                & $processor $node $record | Out-Null
-            }
+            # DEFINITION PROCESSING
+            if ($this.Definition) {
+                # CUSTOM PRE-PROCESSORS
+                foreach ($processor in $this.Definition.Processors.Values) {
+                    & $processor $node $record | Out-Null
+                }
 
-            # CUSTOM PROPERTIES
-            foreach ($property in $this.Definition.NoteProperties.GetEnumerator()) {
-                Add-Member -InputObject $node -MemberType NoteProperty -Name $property.Key -Value $property.Value
-            }
+                # CUSTOM PROPERTIES
+                foreach ($property in $this.Definition.NoteProperties.GetEnumerator()) {
+                    Add-Member -InputObject $node -MemberType NoteProperty -Name $property.Key -Value $property.Value
+                }
 
-            # STANDARD PROPERTIES - late binding (dynamic)
-            foreach ($property in $this.Definition.Properties.GetEnumerator()) {
-                $node.($property.Key) = $property.Value
-            }
+                # BUILT-IN PROPERTIES - late binding (dynamic)
+                foreach ($property in $this.Definition.Properties.GetEnumerator()) {
+                    $node.($property.Key) = $property.Value
+                }
 
-            # CUSTOM METHODS
-            foreach ($method in $this.Definition.Methods.GetEnumerator()) {
-                Add-Member -InputObject $node -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+                # CUSTOM METHODS
+                foreach ($method in $this.Definition.Methods.GetEnumerator()) {
+                    Add-Member -InputObject $node -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+                }
             }
 
             # SHARED BUFFER - Add to quick access ArrayList for all nodes
@@ -637,7 +750,7 @@ function New-TreeViewTab {
         # Object containing the property overrides, event handlers, and custom properties/methods for the TreeView layout container.
         [Parameter(Mandatory = $false)]
             [PSCustomObject]
-            $Definition
+            $Definition = $null
     )
 
     $Container = New-Object System.Windows.Forms.TabPage
@@ -661,28 +774,36 @@ function New-TreeViewTab {
 
     Add-Member -InputObject $TreeView -MemberType NoteProperty -Name DataNodes -Value $null
 
-    ### BUILT-IN PROPERTIES ---------------------------------------------------
-    # Late binding (dynamic)
-    foreach ($property in $Definition.Properties.GetEnumerator()) {
-        $TreeView.($property.Key) = $property.Value
-    }
+    if ($Definition) {
+        ### PROPERTIES ------------------------------------------------------------
+        # Built-In
+        # Late binding (dynamic)
+        foreach ($property in $Definition.Properties.GetEnumerator()) {
+            $TreeView.($property.Key) = $property.Value
+        }
 
-    ### EVENT HANDLERS --------------------------------------------------------
-    # Defaults
-    # Late binding (dynamic)
-    foreach ($handler in $DefaultHandler.GetEnumerator()) {
-        $TreeView."Add_$($handler.Key)"($handler.Value)
-    }
+        # Custom
+        foreach ($property in $Definition.NoteProperties.GetEnumerator()) {
+            Add-Member -InputObject $TreeView -MemberType NoteProperty -Name $property.Key -Value $property.Value
+        }
 
-    # Custom - can override defaults
-    # Late binding (dynamic)
-    foreach ($handler in $Definition.Handlers.GetEnumerator()) {
-        $TreeView."Add_$($handler.Key)"($handler.Value)
-    }
+        ### EVENT HANDLERS --------------------------------------------------------
+        # Defaults
+        # Late binding (dynamic)
+        foreach ($handler in $DefaultHandler.GetEnumerator()) {
+            $TreeView."Add_$($handler.Key)"($handler.Value)
+        }
 
-    ### CUSTOM METHODS --------------------------------------------------------
-    foreach ($method in $Definition.Methods.GetEnumerator()) {
-        Add-Member -InputObject $TreeView -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+        # Custom - can override defaults
+        # Late binding (dynamic)
+        foreach ($handler in $Definition.Handlers.GetEnumerator()) {
+            $TreeView."Add_$($handler.Key)"($handler.Value)
+        }
+
+        ### CUSTOM METHODS --------------------------------------------------------
+        foreach ($method in $Definition.Methods.GetEnumerator()) {
+            Add-Member -InputObject $TreeView -MemberType ScriptMethod -Name $method.Key -Value $method.Value
+        }
     }
 
     ### Return Component Control ----------------------------------------------
