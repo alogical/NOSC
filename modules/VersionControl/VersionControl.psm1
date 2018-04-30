@@ -11,7 +11,7 @@
     Email:  daniel.ives@live.com
 #>
 
-$ModuleInvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
+$InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
 
 ###############################################################################
 ###############################################################################
@@ -404,7 +404,7 @@ function Merge-File {
     in some cases be unable to reconstruct the original (pre-merge) changes.
 #>
 function Merge-Abort {
-
+    throw (New-Object System.NotImplementedException)
 }
 
 <#
@@ -605,7 +605,7 @@ function ConvertFrom-CTime {
 #>
 function ConvertTo-UInt32NBA {
     param(
-        # Four byte CTIME array.
+        # Four byte unsigned integer.
         [Parameter(Mandatory = $true)]
             [UInt32]
             $UInt32
@@ -632,7 +632,7 @@ function ConvertTo-UInt32NBA {
 #>
 function ConvertFrom-UInt32NBA {
     param(
-        # Four byte CTIME array.
+        # Four byte array.
         [Parameter(Mandatory = $true)]
             [Byte[]]
             $Bytes
@@ -818,6 +818,7 @@ function Read-TREE {
 
 .DESCRIPTION
     Reads the serialized REUC extension cache data from the index.
+
 .NOTES
     See... About Git Index Format: Resolve undo
 
@@ -827,6 +828,244 @@ function Read-TREE {
 #>
 function Read-REUC {
     throw (New-Object System.NotImplementedException)
+}
+
+<#
+.SYNOPSIS
+    Index tree entry object constructor.
+
+.DESCRIPTION
+    Each tree entry consists of a sha1 identifier, pathname, and
+    mode.
+
+.OUTPUT
+    [PSCustomObject]
+        Object representation of an index tree entry.
+#>
+function New-TreeEntry {
+    $entry = [PSCustomObject]@{
+        # Sha1 of the entry object.
+        Identifier = $null
+
+        # File system path of the entry.
+        PathName = $null
+
+        # File type and permissions.
+        Mode = $null
+    }
+
+    return $entry
+}
+
+<#
+.SYNOPSIS
+    Parse TREE fields from file stream.
+
+.DESCRIPTION
+    Reads a file stream to parse the TREE path, entry count, subtree count,
+    and sha1 object name.
+
+.OUTPUT
+    [Int32]
+        Number of bytes read from the file stream.
+#>
+$method_parse_tree_description = {
+    param(
+        [Parameter(Mandatory = $true)]
+        [Int32]
+            $Offset,
+
+        [Parameter(Mandatory = $true)]
+        [System.IO.FileStream]
+            $Stream
+    )
+
+    if ($Stream.CanSeek -and $Stream.Position -ne $Offset) {
+        $Stream.Position = $Offset
+    }
+    else {
+        throw (New-Object System.NotSupportedException)
+    }
+
+    # Variable length content buffer
+    $buffer = New-Object System.Collections.ArrayList
+
+    # Sha1 buffer (20 bytes)
+    $sha1 = New-Object byte[] 20
+
+    # Count of bytes that have been read
+    $nbytes = 0
+
+    # Tree has not been invalidated by changes
+    $valid = $true
+
+    # End of tree description line
+    $eol   = $false
+
+    # Parse mode for each field
+    $mode  = 0
+
+    if ($Stream.CanRead) {
+
+        while (!$eol) {
+
+            # End of Line
+            if ($mode -eq 3) {
+                # SHA1 pre-computed commit id (20bytes)
+                $nbytes += $Stream.Read($sha1, 0, 20)
+                $this.
+            }
+
+            $byte = $Stream.Read()
+            $nbytes++
+
+            switch ($mode) {
+                # Invalidated tree
+                -1 {
+                    # expected [0x20][...][LF]
+                    if ($byte -eq 0x20) {
+                        break
+                    }
+                    if ($byte -ne 0x0A) {
+                        [void]$buffer.Add($byte)
+                        break
+                    }
+                    if ($buffer.Count -gt 0) {
+                        $this.SubTreeCount = [Int32]([System.Text.ASCIIEncoding]::ASCII.GetChars($buffer.ToArray()))
+                        return $nbytes
+                    }
+                }
+
+                # Variable length path component NULL-terminated
+                0 {
+                    if ($byte -ne 0x00) {
+                        [void]$buffer.Add($byte)
+                        break
+                    }
+                    else {
+                        $this.Path = [System.Text.ASCIIEncoding]::UTF8.GetChars($buffer.ToArray()) -join ''
+                        $mode++
+                        $buffer.Clear()
+                        break
+                    }
+                }
+
+                # Variable length ASCII decimal number (count of entries)
+                1 {
+                    # Test for INVALID TREE [-] negative sign
+                    if ($buffer.Count -eq 0 -and $byte -eq 0x2D) {
+                        $valid = $false
+                        break
+                    }
+
+                    # Invalidated tree
+                    if (!$valid)
+                    {
+                        # format validation [-1]
+                        if ($byte -ne 0x31) {
+                            throw (New-Object System.FormatException)
+                        }
+                        $this.EntryCount = [Int32]([System.Text.ASCIIEncoding]::ASCII.GetChars($buffer.ToArray()))
+                        $buffer.Clear()
+                        $mode = -1
+                        break
+                    }
+
+                    # Add ASCII decimal digit to buffer
+                    if ($byte -ne 0x20) {
+                        [void]$buffer.Add($byte)
+                        break
+                    }
+                    else {
+                        $this.EntryCount = [Int32]([System.Text.ASCIIEncoding]::ASCII.GetChars($buffer.ToArray()))
+                        $buffer.Clear()
+                        $mode++
+                        break
+                    }
+                }
+
+                # Variable length ASCII decimal number (count of subtrees)
+                2 {
+                    if ($byte -ne 0x0A) {
+                        [void]$buffer.Add($byte)
+                        break
+                    }
+                    if ($buffer.Count -gt 0) {
+                        $this.SubTreeCount = [Int32]([System.Text.ASCIIEncoding]::ASCII.GetChars($buffer.ToArray()))
+                        $mode++
+                        $buffer.Clear()
+                        break
+                    }
+                }
+            }
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Index tree walking state object constructor.
+
+.DESCRIPTION
+    Data structure used to maintain the current state of a tree walking
+    operation.
+
+.OUTPUT
+    [PSCustomObject]
+        Object representation of an index tree description.
+#>
+function New-TreeDesciption {
+    $tree = [PSCustomObject]@{
+        # Memory representation of the tree.
+        Buffer = $null
+
+        # Counts the number of bytes left in the buffer.
+        Size = $null
+
+        # Points to the current entry being visited.
+        Entry = $null
+    }
+
+    return $tree
+}
+
+<#
+.SYNOPSIS
+    Index tree walking state object constructor.
+
+.DESCRIPTION
+    Data structure used to maintain the current state of a tree walking
+    operation.
+
+.OUTPUT
+    [PSCustomObject]
+        Object representation of an index tree traversal operation.
+#>
+function New-TreeTraversal {
+    $traversal = [PSCustomObject]@{
+        # Points to the previous traversal object which was used to decend int
+        # the current tree.  If this is the top-level tree 'prev' will point
+        # to a dummy 'empty' traveral object
+        Prev = $null
+
+        # The length of the full path for the curren tree.
+        PathLen = 0
+
+        # Can be used by callbacks to maintain directory-file conflics.
+        Conflicts = $null
+
+        # Callback called for each entry in the tree.
+        Callback = $null
+
+        # Blob of data that can be anything that the 'fn' callback would want
+        # to use.
+        Data = $null
+
+        # Stop on first error or show all errors.
+        ErrorAction = [System.Management.Automation.ActionPreference]::Stop
+    }
+
+    return $traversal
 }
 
 ###############################################################################
