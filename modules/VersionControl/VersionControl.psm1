@@ -446,14 +446,13 @@ function New-Repository {
             {
                 $path_stack.Push($path[$i])
             }
-            $tree = Get-SubTree -Stack $path_stack -Commit $commit -FileSystem $this.FileSystem
+            $tree = Get-SubTree -Stack $path_stack -Tree $commit.Tree -FileSystem $this.FileSystem
         }
 
         # Get Parent blob object ID from Tree
-
-        if ($head)
+        if ($tree)
         {
-            foreach ($item in $commit.Entries)
+            foreach ($item in $tree.Entries)
             {
                 if ($item.Path -eq $Entry.Path)
                 {
@@ -970,7 +969,7 @@ function Get-SubTree {
         }
     }
 
-    throw (New-Object System.ArgumentOutOfRangeException("Sub-tree path is invalid or sub-tree doesn't exist."))
+    return $null
 }
 
 function Get-UtcOffset {
