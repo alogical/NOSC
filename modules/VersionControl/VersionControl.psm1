@@ -128,12 +128,27 @@ function New-Repository {
         return $true
     }
 
+    <#
+    .SYNOPSIS
+        Get the HEAD object ID.
+
+    .DESCRIPTION
+        Retrieves the SHA1 object ID of the current branch.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetHeadOid -Value {
         [System.Text.RegularExpressions.Match]$match = $Regex.Head.Match($this.HEAD)
         $ref = $match.Groups['path'].Value
         return (Get-Content (Join-Path $this.Repository $ref))
     }
 
+    <#
+    .SYNOPSIS
+        Updates the HEAD ref pointer.
+
+    .DESCRIPTION
+        Updates the HEAD reference pointer for the current branch to the supplied SHA1
+        object ID.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name WriteHeadOid -Value {
         param(
             [Parameter(Mandatory = $true)]
@@ -145,12 +160,27 @@ function New-Repository {
         $ObjectID > (Join-Path $this.Repository $ref)
     }
 
+    <#
+    .SYNOPSIS
+        Retrieves the HEAD commit object.
+
+    .DESCRIPTION
+        Returns a deserialized copy the commit object that represents the HEAD of the
+        current branch.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetHead -Value {
         $object = Get-Content $this.FileSystem.Get($this.GetHeadOid()) -Raw
         return (ConvertFrom-PSObject (ConvertFrom-Json $object))
     }
 
-    ## Configuration Control --------------------------------------------------
+    <#
+    .SYNOPSIS
+        Initializes the VersionControl user information configuration file.
+
+    .DESCRIPTION
+        Used to initialize the user information configuration file at the specified
+        location.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name InitConfig -Value {
         param(
             [Parameter(Mandatory = $true)]
@@ -187,6 +217,13 @@ function New-Repository {
         return $config
     }
 
+    <#
+    .SYNOPSIS
+        Sets the configured user name.
+
+    .DESCRIPTION
+        Sets the configured user name and updates the configuration file.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetUser -Value {
         param(
             [Parameter(Mandatory = $true)]
@@ -201,6 +238,13 @@ function New-Repository {
         ConvertTo-Json $config > $this.Config
     }
 
+    <#
+    .SYNOPSIS
+        Sets the configured user email address.
+
+    .DESCRIPTION
+        Sets the configured user email address and updates the configuration file.
+    #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name SetEmail -Value {
         param(
             [Parameter(Mandatory = $true)]
@@ -652,6 +696,7 @@ function New-Repository {
 
     return $Repository
 }
+
 Export-ModuleMember -Function *
 
 ###############################################################################
