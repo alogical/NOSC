@@ -1,9 +1,15 @@
 ﻿<#
 .SYNOPSIS
-    Directed Acyclic Graph (DAG) module.
+    File version control management module.
 
 .DESCRIPTION
-    Provides DAG capabilities for data coloboration and version control.
+    Provides version control capabilities for data coloboration and historical
+    data management using a directed acyclic graph (DAG) commit model.
+
+.NOTES
+    This module emulates the Git version control system, but doesn't implement
+    all of the features available in Git. This module cannot be used to manage
+    a Git repository.
 
 .NOTES
     Author: Daniel K. Ives
@@ -61,7 +67,7 @@ function New-Repository {
         # Email address of user.
         Email = [String]::Empty
 
-        # Repository configuration path.
+        # Repository user configuration path.
         Config = $ConfigPath
     }
 
@@ -771,6 +777,14 @@ function Initialize-Repository {
     'ref: refs/heads/master' > $head_path
 }
 
+<#
+.SYNOPSIS
+    Constructs a commit object.
+
+.DESCRIPTION
+    Constructs the root tree for the commit and initiates the recursive construction
+    of sub-trees.
+#>
 function Build-Commit {
     param(
         # The list of entries to be processed for this tree.
@@ -793,7 +807,6 @@ function Build-Commit {
     $walked  = @{
         root = New-Object System.Collections.ArrayList
     }
-    $current = New-Object System.Collections.Stack
 
     # Walk entries to build reference list.
     foreach ($entry in $Entries)
@@ -823,6 +836,7 @@ function Build-Commit {
     $root.Summary = Get-Summary $root.Entries $FileSystem.ShaProvider
 
     # Recursively build subtrees
+    $current = New-Object System.Collections.Stack
     foreach ($cache in $TreeCache.Subtrees)
     {
         # Cached tree validation check.  If the cached tree is valid than the
@@ -834,7 +848,7 @@ function Build-Commit {
             continue
         }
 
-        [void]$root.Subtrees.Add( (Build-Tree $cache $Walked $Current $FileSystem) )
+        [void]$root.Subtrees.Add( (Build-Tree $cache $Walked $current $FileSystem) )
     }
 
     $root.EntryCount = $root.Entries.Count
@@ -843,6 +857,17 @@ function Build-Commit {
     return $root
 }
 
+<#
+.SYNOPSIS
+    Constructs a tree object.
+
+.DESCRIPTION
+    Recursively builds a tree and it's sub-trees to represent the file structure of
+    the working directory that has been staged for this commit in the index.
+    
+    Saves completed tree objects to the content addressable file system as they are
+    created.
+#>
 function Build-Tree {
     param(
         [Parameter(Mandatory = $true)]
@@ -897,6 +922,13 @@ function Build-Tree {
     return $FileSystem.WriteBlob( [System.Text.ASCIIEncoding]::UTF8.GetBytes((ConvertTo-Json $tree -Depth 100)) )
 }
 
+<#
+.SYNOPSIS
+    Commit object constructor.
+
+.DESCRIPTION
+    Initializes a new commit data structure with default values.
+#>
 function New-Commit {
     $commit = @{
         # SHA1 identifier of the tree that represents the files of this commit.
@@ -928,6 +960,13 @@ function New-Commit {
     return $commit
 }
 
+<#
+.SYNOPSIS
+    Tree object constructor.
+
+.DESCRIPTION
+    Initializes a new tree data structure with default values.
+#>
 function New-Tree {
     $tree = @{
         # Object type.
@@ -957,6 +996,14 @@ function New-Tree {
     return $tree
 }
 
+<#
+.SYNOPSIS
+    Recursively retrieves the sub-tree of a tree.
+
+.DESCRIPTION
+    Used to recursively walk a nested tree structure to retrieve a sub-tree
+    at the specified path.
+#>
 function Get-SubTree {
     param(
         [Parameter(Mandatory = $true)]
@@ -991,6 +1038,14 @@ function Get-SubTree {
     return $null
 }
 
+<#
+.SYNOPSIS
+    Get the system's timezone UTC offset.
+
+.DESCRIPTION
+    Calculates the UTC offset of the system timezone so timestamps can be converted
+    back into the local time of the author for a commit and logs.
+#>
 function Get-UtcOffset {
     $tz = Get-TimeZone
     $offset = $tz.GetUtcOffset( (Get-Date) )
