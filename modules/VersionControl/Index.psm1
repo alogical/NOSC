@@ -77,7 +77,7 @@ function New-Index {
         $this.idx = ConvertFrom-PSObject (ConvertFrom-Json $content)
         $this.Path = $LiteralPath
 
-        $this.RefreshCache()
+        $this.RefreshPathCache()
 
         return $this.idx.HEAD
     }
@@ -94,13 +94,15 @@ function New-Index {
         $c      = ConvertFrom-PSObject (ConvertFrom-Json $object)
 
         $this.idx = New-PrivateIndex
-        $this.idx.TREE   = ConvertTo-CacheTree $c.Tree $Commit
-        $this.idx.Entries = Build-Cache $c.Tree $this.idx.TREE
+        $this.idx.HEAD    = $Commit
+        $this.idx.Commit  = $true
+        $this.idx.TREE    = ConvertTo-CacheTree $c.Tree $Commit
+        $this.idx.Entries.AddRange( (Build-Cache $c.Tree $this.idx.TREE) )
 
-        $this.RefreshCache()
+        $this.RefreshPathCache()
     }
 
-    Add-Member -InputObject $Index -MemberType ScriptMethod -Name RefreshCache -Value {
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name RefreshPathCache -Value {
         $PathCache = $this.PathCache
         $PathCache.Clear()
 
@@ -120,14 +122,14 @@ function New-Index {
             $parent = Split-Path $entry.Path -Parent
             if ([String]::IsNullOrEmpty($parent))
             {
-                [void]$walked.root.Add($entry.Name)
+                [void]$walked.root.Add( $entry.Path + $entry.Name )
                 continue
             }
             if (!$walked.Contains( $parent ))
             {
                 $walked.Add($parent, (New-Object System.Collections.ArrayList))
             }
-            [void]$walked[$parent].Add($entry.Name)
+            [void]$walked[$parent].Add( (Split-Path $entry.Path -Leaf) + $entry.Name )
         }
         $summary = @{}
         foreach ($entry in $walked.GetEnumerator())
@@ -223,7 +225,15 @@ function New-Index {
             [Parameter(Mandatory = $true)]
             [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
             [Hashtable]
-                $InputObject
+                $InputObject,
+
+            [Parameter(Mandatory = $false)]
+            [Bool]
+                $InvalidateTree = $true,
+
+            [Parameter(Mandatory = $false)]
+            [Bool]
+                $Write = $true
         )
 
         # Previous entry if the added entry updates an existing entry
@@ -250,11 +260,18 @@ function New-Index {
 
         # Invalidate Cache Tree path for this object
         #   The Cache Tree may also be invalidated by Repository.Status()
-        $this.InvalidateTree($InputObject.Path)
+        if ($InvalidateTree)
+        {
+            $this.InvalidateTree($InputObject.Path)
+        }
 
-        # Save changes to the index.
+        # Add new entry to the index.
         $i = $this.idx.Entries.Add($InputObject)
-        $this.Write()
+
+        if ($Write)
+        {
+            $this.Write()
+        }
 
         return $i
     }
@@ -386,7 +403,7 @@ function Get-Summary {
     $list = New-Object System.Collections.ArrayList
     for ($i = 0; $i -lt $Entries.Count; $i++)
     {
-        [void]$list.Add($Entries[$i].Name)
+        [void]$list.Add( (Split-Path $Entries[$i].Path -Leaf) + $Entries[$i].Name )
     }
     $list.Sort()
     return $ShaProvider.HashString( ($list -join [String]::Empty) )

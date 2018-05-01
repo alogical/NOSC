@@ -453,20 +453,22 @@ function New-Repository {
         # Get Parent blob object ID from Tree
         if ($tree)
         {
-            $i = 0
+            $i = -1
             foreach ($item in $tree.Entries)
             {
                 if ($item.Path -eq $Entry.Path)
                 {
-                    $i = $this.Index.Add( (ConvertFrom-PSObject $item) )
+                    # Revert to previous entry; skip tree invalidation & index write
+                    $i = $this.Index.Add( (ConvertFrom-PSObject $item), $false, $false )
                     $this.Index.RevalidateTree($item.Path)
                     break
                 }
             }
-            if ($i -and $commit.Summary -eq $this.Index.Summary)
+            if ($i -ge 0 -and $commit.Summary -eq $this.Index.Summary)
             {
                 $this.Index.idx.Commit = $true
             }
+            # Save the index changes
             $this.Index.Write()
             return $i
         }
@@ -529,9 +531,7 @@ function New-Repository {
 
         # Update the Index
         $this.Index.Checkout($oid)
-        $this.Index.idx.HEAD   = $oid
-        $this.Index.idx.Commit = $true
-        $this.Index.Modified   = $false
+        $this.Index.Modified = $false
         $this.Index.Write()
 
         # Update the Logs
@@ -870,7 +870,9 @@ function Build-Tree {
     $tree.Path = $cache.Path
         
     # Get list of entries learned from the index.
-    $tree.Entries = $walked[ ($current.ToArray() -join '\') ]
+    $path_components = $current.ToArray()
+    [Array]::Reverse($path_components)
+    $tree.Entries = $walked[ ($path_components -join '\') ]
     $tree.Summary = Get-Summary $tree.Entries $FileSystem.ShaProvider
 
     foreach ($item in $Cache.Subtrees)
