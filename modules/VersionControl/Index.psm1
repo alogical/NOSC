@@ -129,11 +129,13 @@ function New-Index {
             }
             [void]$walked[$parent].Add($entry.Name)
         }
+        $summary = @{}
         foreach ($entry in $walked.GetEnumerator())
         {
             $entry.Value.Sort()
-            $walked[$entry.Key] = $this.FileSystem.ShaProvider.HashString( ($entry.Value -join [String]::Empty) )
+            $summary[$entry.Key] = $this.FileSystem.ShaProvider.HashString( ($entry.Value -join [String]::Empty) )
         }
+        return $summary, $walked
     }
 
     Add-Member -InputObject $Index -MemberType ScriptMethod -Name InvalidateTree -Value {
@@ -181,30 +183,34 @@ function New-Index {
                 $Path
         )
 
+        # Calculate tree summaries to determine if the index is back in it's original
+        # state for each tree in the entry path.
+        $summary, $entries = $this.SummarizeTrees()
+
         # Cache Tree for this object
         #   The Cache Tree may also be invalidated by Repository.Status()
         $path_component = @((Split-Path $Path -Parent).Split('\'))
+        $path_queue     = New-Object System.Collections.Queue
         $current = $this.TREE
-        $current.Count = -1
+
+        if ($summary.root -eq $current.Summary)
+        {
+            $current.Count = $entries.root.Count
+        }
+
         foreach ($dir in $path_component)
         {
-            # Create Empty Cache Tree
-            if ($current.Subtrees.Count -eq 0 -and ![String]::IsNullOrEmpty($dir))
-            {
-                $new = New-CacheTree
-                $new.Path  = $dir
-                $new.Count = -1
-                [void]$current.Subtrees.Add($new)
-                $current = $new
-                continue
-            }
-
+            $path_queue.Enqueue($dir)
+            $path_rel = $path_queue.ToArray() -join '\'
             # Invalidate Tree
             foreach ($tree in $current.Subtrees)
             {
                 if ($tree.Path -eq $dir)
                 {
-                    $tree.Count = -1
+                    if ($tree.Summary -eq $summary[$path_rel])
+                    {
+                        $tree.Count = $entries[$path_rel].Count
+                    }
                     $current = $tree
                     break
                 }
@@ -377,7 +383,7 @@ function Get-Summary {
         [PSCustomObject]
             $ShaProvider
     )
-    $list = New-Object System.Text.ArrayList
+    $list = New-Object System.Collections.ArrayList
     for ($i = 0; $i -lt $Entries.Count; $i++)
     {
         [void]$list.Add($Entries[$i].Name)
@@ -443,6 +449,9 @@ function New-CacheTree {
         #  If count is -1 than the tree is in an invalidated state.
         Count    = [Int32]0
 
+        # Summary SHA1 of the oids for the entries contained within this tree.
+        Summary   = [String]::Empty
+
         # Subtrees contained by this tree.
         Subtrees = New-Object System.Collections.ArrayList
     }
@@ -486,9 +495,10 @@ function ConvertTo-CacheTree {
     )
 
     $t = New-CacheTree
-    $t.Name = $Name
-    $t.Path = $Tree.Path
-    $t.Count = $Tree.EntryCount
+    $t.Name    = $Name
+    $t.Path    = $Tree.Path
+    $t.Count   = $Tree.EntryCount
+    $t.Summary = $Tree.Summary
 
     return $t
 }

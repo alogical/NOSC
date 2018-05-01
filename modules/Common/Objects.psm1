@@ -81,7 +81,7 @@ function New-SecureHashProvider {
                 $File
         )
         $reader = [System.IO.StreamReader]$File.FullName
-        [void] $this.ComputeHash( $reader.BaseStream )
+        [void]$this.ComputeHash( $reader.BaseStream )
 
         $reader.Close()
 
@@ -116,7 +116,7 @@ function New-SecureHashProvider {
         )
 
         $buffer = [System.Text.UnicodeEncoding]::UTF8.GetBytes($InputString)
-        $this.ComputeHash($buffer)
+        [void]$this.ComputeHash($buffer)
 
         return $this.OutString
     }

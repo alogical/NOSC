@@ -459,14 +459,16 @@ function New-Repository {
                 if ($item.Path -eq $Entry.Path)
                 {
                     $i = $this.Index.Add( (ConvertFrom-PSObject $item) )
+                    $this.Index.RevalidateTree($item.Path)
                     break
                 }
             }
             if ($i -and $commit.Summary -eq $this.Index.Summary)
             {
-                $this.Index.Modified = $false
-                return $i
+                $this.Index.idx.Commit = $true
             }
+            $this.Index.Write()
+            return $i
         }
         return $this.Index.Remove($Entry)
     }
@@ -759,7 +761,7 @@ function Initialize-Repository {
          New-Item (Join-Path $d.FullName tags)       -ItemType Directory | Out-Null
 
     $d = New-Item (Join-Path $LiteralPath logs)      -ItemType Directory
-        [String]::Empty > (Join-Path $d.FullName HEAD)
+         New-Item (Join-Path $d.FullName HEAD)       -ItemType File      | Out-Null
     $d = New-Item (Join-Path $d.FullName refs)       -ItemType Directory
             New-Item (Join-Path $d.FullName heads)   -ItemType Directory | Out-Null
             New-Item (Join-Path $d.FullName remotes) -ItemType Directory | Out-Null
