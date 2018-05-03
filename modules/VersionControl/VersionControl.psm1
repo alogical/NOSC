@@ -53,10 +53,10 @@ function New-Repository {
         WorkingDirectory = [String]::Empty
 
         # The repository sub file system.
-        Repository       = [String]::Empty
+        Repository = [String]::Empty
 
         # The HEAD ref for this branch.
-        HEAD  = [String]::Empty
+        HEAD = [String]::Empty
 
         # Content addressable file system manager.
         FileSystem = New-FileManager
@@ -136,7 +136,24 @@ function New-Repository {
 
     <#
     .SYNOPSIS
-        Get the HEAD object ID.
+        Get the HEAD object ID for a branch.
+
+    .DESCRIPTION
+        Retrieves the SHA1 object ID of the specified branch name.
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetBranchOid -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Name
+        )
+        $refs = Join-Path $this.Repository ref/heads
+        return (Get-Content (Join-Path $refs $Name))
+    }
+
+    <#
+    .SYNOPSIS
+        Get the HEAD object ID for the current branch.
 
     .DESCRIPTION
         Retrieves the SHA1 object ID of the current branch.
@@ -503,6 +520,204 @@ function New-Repository {
 
     <#
     .SYNOPSIS
+        Creates a new branch within the repository.
+
+    .DESCRIPTION
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name CreateBranch -Value {
+        param(
+            # The name of the new branch to create.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Name,
+
+            # The name of the branch from which the new branch is being created from.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Source
+        )
+        $ref_path = Join-Path $this.Repository refs/heads
+        $log_path = Join-Path $this.Repository logs/refs/heads
+        if ($Name -match '\\')
+        {
+            $dir = $Name.Split('\')
+        }
+        elseif ($Name -match '\/')
+        {
+            $dir = $Name.Split('/')
+        }
+        if ($dir.Count -gt 0)
+        {
+            for ($i = 0; $i -lt $dir.Count - 1; $i++)
+            {
+                $ref_path = Join-Path $ref_path $dir[$i]
+                if (!(Test-Path $ref_path))
+                {
+                    New-Item $ref_path -ItemType Directory | Out-Null
+                }
+
+                $log_path = Join-Path $log_path $dir[$i]
+                if (!(Test-Path $log_path))
+                {
+                    New-Item $log_path -ItemType Directory | Out-Null
+                }
+            }
+        }
+        $ref_path = Join-Path $ref_path $Name
+        $log_path = Join-Path $log_path $Name
+
+        $this.GetBranchOid($Source) > $ref_path
+        New-Item $log_path -ItemType File | Out-Null
+
+        $this.LogBranch($Name, $Source, [DateTime]::Now.ToFileTimeUtc(), (Get-UtcOffset))
+    }
+
+    <#
+    .SYNOPSIS
+        Deletes a branch from the repository.
+
+    .DESCRIPTION
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name DeleteBranch -Value {
+        param(
+            # The name of the branch to delete.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Name
+        )
+    }
+
+    <#
+    .SYNOPSIS
+        Changes between branches within the repository.
+
+    .DESCRIPTION
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Checkout -Value {
+        param(
+            # The name of the branch to checkout.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Name
+        )
+
+        $this.LogCheckout($Name)
+
+        # Point the repository to the destination branch head
+        $this.HEAD = "ref: refs/heads/$Name"
+        $this.HEAD > (Join-Path $this.Repository HEAD)
+        $head = $this.GetHeadOid()
+
+        # Create Checkout Index
+        $checkout = New-Index
+        $checkout.Path = $this.Index.Path
+        $checkout.FileSystem = $this.FileSystem
+        $checkout.Checkout($head)
+
+        # Entries that are to be removed from the working directory
+        $rem_filter = New-Object System.Collections.ArrayList
+        $rem_filter.AddRange($this.Index.Entries.ToArray())
+
+        # Entries missing from the working directory
+        $add_filter = New-Object System.Collections.ArrayList
+        $add_filter.AddRange($checkout.Entries.ToArray())
+
+        # Reset Working Directory
+        $cache = $checkout.PathCache
+        foreach ($e in $this.Index.Entries)
+        {
+            if ($cache.Contains($e.Path))
+            {
+                # Checkout entry
+                $c = $cache[$e.Path]
+
+                # Remove entry from filter lists
+                [void]$rem_filter.Remove($e)
+                [void]$add_filter.Remove($c)
+
+                # Replace current file with checkout file
+                if ($c.Name -ne $e.Name)
+                {
+                    Copy-Item $this.FileSystem.Get($c.Name) (Join-Path $this.WorkingDirectory $c.Path) -Force
+                }
+            }
+        }
+
+        # Add missing entries
+        #  Perform this action before removing old files so we don't have to duplicate
+        #  work adding and removing directories.
+        foreach ($e in $add_filter)
+        {
+            $full_path = Join-Path $this.WorkingDirectory $e.Path
+            $dir_path  = Split-Path $full_path -Parent
+
+            # Force creation of destination folder
+            New-Item $dir_path -ItemType Directory -ErrorAction Continue | Out-Null
+
+            # Copy checkout file to working directory
+            Copy-Item $this.FileSystem.Get($e.Name) $full_path -Force
+        }
+
+        # Remove entries not a part of this commit
+        foreach ($e in $rem_filter)
+        {
+            $full_path = Join-Path $this.WorkingDirectory $e.Path
+            $dir_path  = Split-Path $full_path -Parent
+
+            # Remove file from working directory
+            Remove-Item $full_path -Force
+
+            # Remove empty folders from working directory
+            if (!(Get-ChildItem $dir_path -File -Recurse))
+            {
+                Remove-Item $dir_path -Force
+            }
+        }
+
+        # Updated Repository Index
+        $this.Index = $checkout
+        $this.Index.Write()
+
+        return $this.Index.HEAD
+    }
+
+    <#
+    .SYNOPSIS
+        Merges changes from a branch into the current branch.
+
+    .DESCRIPTION
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Merge -Value {
+        param(
+            # The name of the branch to being merged from.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Source
+        )
+    }
+
+    <#
+    .SYNOPSIS
+        Clones a repository to the specified path.
+
+    .DESCRIPTION
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Clone -Value {
+        param(
+            # The path to the repository being cloned.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Source,
+
+            # The path of the working directory being cloned too.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Destination
+        )
+    }
+
+    <#
+    .SYNOPSIS
         Commits changes tracked in the repository index.
 
     .DESCRIPTION
@@ -613,7 +828,35 @@ function New-Repository {
           0000000000000000000000000000000000000000 <HEAD_sha1> <user_name> <email_addr> <utc_time> <utc_offset> branch: Created from <source_branch_name>
     #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogBranch -Value {
+        param(
+            # The name of the new branch created.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Name,
 
+            # The name of the branch from which the new branch is being created from.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Source,
+
+            # UTC time of commit.  File time format.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $UtcTime,
+
+            # UTC timezone offset.
+            [Parameter(Mandatory = $true)]
+            [String]
+                $UtcOffset
+        )
+
+        $log_path = Join-Path $this.Repository logs/refs/heads
+        $log_path = Join-Path $log_path $Name
+
+        $parent ='0000000000000000000000000000000000000000'
+        $head   = $this.GetBranchOid($Source)
+        $msg = "{0} {1} {2} <{3}> {4} {5} branch: Created from {6}" -f $parent, $head, $this.User, $this.Email, $UtcTime, $UtcOffset, $Source
+        $msg >> $log_path
     }
 
     <#
@@ -626,7 +869,11 @@ function New-Repository {
           <from_sha1> <to_sha1> <user_name> <email_addr> <utc_time> <utc_offset> checkout: moving from <source_branch_name> to <destination_branch_name>
     #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogCheckout -Value {
-
+        param(
+            [Parameter(Mandatory = $true)]
+            [String]
+                $Name
+        )
     }
 
     <#
