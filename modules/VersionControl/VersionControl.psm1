@@ -489,14 +489,15 @@ function New-Repository {
         Used to untrack a file from the repository history when deleting a file from
         the working directory.
     #>
-    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Untrack -Value {
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name Remove -Value {
         param(
             [Parameter(Mandatory = $true)]
-            [ValidateScript({$_.Type -eq [VersionControl.Index.ObjectType]::Entry})]
+            [ValidateScript({$_.Type -eq [VersionControl.Repository.Index.ObjectType]::Entry})]
             [Hashtable]
                 $Entry
         )
-
+        $fullpath = Join-Path $this.WorkingDirectory $Entry.Path
+        Remove-Item $fullpath -Force
         return $this.Index.Remove($entry)
     }
 
