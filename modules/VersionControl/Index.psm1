@@ -90,14 +90,16 @@ function New-Index {
                 $Commit
         )
 
-        $object = Get-Content $this.FileSystem.Get($Commit).FullName -Raw
-        $c      = ConvertFrom-PSObject (ConvertFrom-Json $object)
+        # Get commit object
+        $object = ConvertFrom-Json (Get-Content $this.FileSystem.Get($Commit).FullName -Raw)
+        $root   = ConvertFrom-PSObject (ConvertFrom-Json (Get-Content $this.FileSystem.Get($object.Tree) -Raw))
 
+        # Update in-memory index
         $this.idx = New-PrivateIndex
         $this.idx.HEAD    = $Commit
         $this.idx.Commit  = $true
-        $this.idx.TREE    = ConvertTo-CacheTree $c.Tree $Commit
-        $this.idx.Entries.AddRange( (Build-Cache $c.Tree $this.idx.TREE) )
+        $this.idx.TREE    = ConvertTo-CacheTree $root $Commit             # Root of TREE
+        $this.idx.Entries.AddRange( (Build-Cache $root $this.idx.TREE) )  # Updates TREE/sub-trees
 
         $this.RefreshPathCache()
     }
@@ -154,16 +156,14 @@ function New-Index {
         $current.Count = -1
         foreach ($dir in $path_component)
         {
-            # Create Empty Cache Tree
-            if ($current.Subtrees.Count -eq 0 -and ![String]::IsNullOrEmpty($dir))
+            # File exists within the root of the working directory
+            if ([String]::IsNullOrEmpty($dir))
             {
-                $new = New-CacheTree
-                $new.Path  = $dir
-                $new.Count = -1
-                [void]$current.Subtrees.Add($new)
-                $current = $new
-                continue
+                break
             }
+
+            # Tree Creation Control Flag
+            $create = $true
 
             # Invalidate Tree
             foreach ($tree in $current.Subtrees)
@@ -172,8 +172,19 @@ function New-Index {
                 {
                     $tree.Count = -1
                     $current = $tree
+                    $create  = $false
                     break
                 }
+            }
+
+            # Create Empty Cache Tree
+            if ($create)
+            {
+                $new = New-CacheTree
+                $new.Path  = $dir
+                $new.Count = -1
+                [void]$current.Subtrees.Add($new)
+                $current = $new
             }
         }
     }

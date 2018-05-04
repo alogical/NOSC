@@ -458,9 +458,10 @@ function New-Repository {
         }
 
         # Get Tree object for this blob
+        $root = ConvertFrom-Json (Get-Content $this.FileSystem.Get($commit.Tree) -Raw)
         if ($Entry.Path -notmatch '\\')
         {
-            $tree = $commit.Tree
+            $tree = $root
         }
         else
         {
@@ -470,7 +471,7 @@ function New-Repository {
             {
                 $path_stack.Push($path[$i])
             }
-            $tree = Get-SubTree -Stack $path_stack -Tree $commit.Tree -FileSystem $this.FileSystem
+            $tree = Get-SubTree -Stack $path_stack -Tree $root -FileSystem $this.FileSystem
         }
 
         # Get Parent blob object ID from Tree
@@ -1102,7 +1103,14 @@ function Build-Commit {
     $root.EntryCount = $root.Entries.Count
     $root.TreeCount  = $root.Subtrees.Count
 
-    return $root
+    $data = ConvertTo-Json $root -Depth 100
+    $oid  = $FileSystem.ShaProvider.HashString($data)
+    if (!$FileSystem.Exists($oid))
+    {
+        [void]$FileSystem.WriteBlob( [System.Text.ASCIIEncoding]::UTF8.GetBytes($data) )
+    }
+
+    return $oid
 }
 
 <#
@@ -1167,7 +1175,14 @@ function Build-Tree {
 
     [void]$Current.Pop()
 
-    return $FileSystem.WriteBlob( [System.Text.ASCIIEncoding]::UTF8.GetBytes((ConvertTo-Json $tree -Depth 100)) )
+    $data = ConvertTo-Json $tree -Depth 100
+    $oid  = $FileSystem.ShaProvider.HashString($data)
+    if (!$FileSystem.Exists($oid))
+    {
+        [void]$FileSystem.WriteBlob( [System.Text.ASCIIEncoding]::UTF8.GetBytes($data) )
+    }
+
+    return $oid
 }
 
 <#
