@@ -147,7 +147,7 @@ function New-Repository {
             [String]
                 $Name
         )
-        $refs = Join-Path $this.Repository ref/heads
+        $refs = Join-Path $this.Repository refs/heads
         return (Get-Content (Join-Path $refs $Name))
     }
 
@@ -159,9 +159,32 @@ function New-Repository {
         Retrieves the SHA1 object ID of the current branch.
     #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetHeadOid -Value {
-        [System.Text.RegularExpressions.Match]$match = $Regex.Head.Match($this.HEAD)
-        $ref = $match.Groups['path'].Value
+        $ref = $this.GetHeadPath()
         return (Get-Content (Join-Path $this.Repository $ref))
+    }
+
+    <#
+    .SYNOPSIS
+        Get the HEAD branch ref path for the current branch.
+
+    .DESCRIPTION
+        Retrieves the reference path of the current branch.
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetHeadPath -Value {
+        [System.Text.RegularExpressions.Match]$match = $Regex.Head.Match($this.HEAD)
+        return $match.Groups['path'].Value
+    }
+
+    <#
+    .SYNOPSIS
+        Get the HEAD branch name for the current branch.
+
+    .DESCRIPTION
+        Retrieves the reference name of the current branch.
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetHeadName -Value {
+        $path = $this.GetHeadPath()
+        return ($path -replace 'refs\/heads\/', [String]::Empty)
     }
 
     <#
@@ -374,7 +397,6 @@ function New-Repository {
                     )
                 }
             }
-
             # New file
             else
             {
@@ -406,6 +428,67 @@ function New-Repository {
 
     <#
     .SYNOPSIS
+        Checks if the working directory has modifications.
+
+    .DESCRIPTION
+        Compares the index cache against the working directory to determine if any tracked
+        files have been modified or new files added.
+
+        Returns true if the working tree has been modified, otherwise false.
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptProperty -Name Modified -Value {
+        # If a previous action has marked the index as modified, skip working directory.
+        if ($this.Index.Modified)
+        {
+            return $true
+        }
+
+        $modified = @{}
+        $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingDirectory + '\') )
+
+        # Entries that were not found in the working directory
+        $entry_filter = New-Object System.Collections.ArrayList
+
+        if ($this.idx.Entries.Count -gt 0)
+        {
+            $entry_filter.AddRange($this.idx.Entries.ToArray())
+        }
+
+        # Validate current working directory contents
+        foreach ($file in (Get-ChildItem -LiteralPath $this.WorkingDirectory -Recurse -File))
+        {
+            $rel_path = $file.FullName -replace $path_filter, [String]::Empty
+
+            # Modified file detection
+            if ($this.Index.PathCache.Contains($rel_path))
+            {
+                $entry = $this.Index.PathCache[$rel_path]
+                [void]$entry_filter.Remove($entry)
+
+                if ($this.Index.Compare($file, $entry) -eq [VersionControl.Repository.Index.CompareResult]::Modified)
+                {
+                    return $true
+                }
+            }
+
+            # New file
+            else
+            {
+                return $true
+            }
+        }
+
+        # Renamed or Deleted file detection
+        if ($entry_filter.Count -gt 0)
+        {
+            return $true
+        }
+
+        return $false
+    }
+
+    <#
+    .SYNOPSIS
         Adds an entry for a new or modified file.
 
     .DESCRIPTION
@@ -428,6 +511,26 @@ function New-Repository {
         $entry.Path   = $File.FullName -replace $path_filter, [String]::Empty
 
         $this.Index.Add($entry)
+    }
+
+    <#
+    .SYNOPSIS
+        Adds an entries for a new or modified files.
+
+    .DESCRIPTION
+        Used to track changes to the working directory in preparation for the next commit.
+
+        Updates all new or modified files to the index.
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name StageAll -Value {
+        $status = $this.Status()
+        foreach ($item in $status.GetEnumerator())
+        {
+            if ($item.Value.File -ne $null)
+            {
+                [void]$this.Stage($item.Value.File)
+            }
+        }
     }
 
     <#
@@ -539,6 +642,7 @@ function New-Repository {
         )
         $ref_path = Join-Path $this.Repository refs/heads
         $log_path = Join-Path $this.Repository logs/refs/heads
+
         if ($Name -match '\\')
         {
             $dir = $Name.Split('\')
@@ -570,7 +674,7 @@ function New-Repository {
         $this.GetBranchOid($Source) > $ref_path
         New-Item $log_path -ItemType File | Out-Null
 
-        $this.LogBranch($Name, $Source, [DateTime]::Now.ToFileTimeUtc(), (Get-UtcOffset))
+        $this.LogBranch($Name, $Source)
     }
 
     <#
@@ -586,6 +690,18 @@ function New-Repository {
             [String]
                 $Name
         )
+
+        # DO NOT DELETE THE CURRENT REPOSITORY HEAD
+
+        # Validate branch has been merged!
+
+        # If forcing deletion of an unmerged branch, trace objects that will be orphaned.
+
+            # Remove orphan objects from content addressable file system.
+
+        # Remove branch ref
+
+        # Remove branch log
     }
 
     <#
@@ -599,8 +715,18 @@ function New-Repository {
             # The name of the branch to checkout.
             [Parameter(Mandatory = $true)]
             [String]
-                $Name
+                $Name,
+
+            # Force checkout regardless of changes to the working directory
+            [Parameter(Mandatory = $false)]
+            [Bool]
+                $Force = $false
         )
+
+        if (!$Force -and ($this.Index.Modified -or $this.Modified))
+        {
+            throw (New-Object System.InvalidOperationException("There are un-committed changes to the working directory."))
+        }
 
         $this.LogCheckout($Name)
 
@@ -617,11 +743,11 @@ function New-Repository {
 
         # Entries that are to be removed from the working directory
         $rem_filter = New-Object System.Collections.ArrayList
-        $rem_filter.AddRange($this.Index.Entries.ToArray())
+        $rem_filter.AddRange($this.Index.idx.Entries.ToArray())
 
         # Entries missing from the working directory
         $add_filter = New-Object System.Collections.ArrayList
-        $add_filter.AddRange($checkout.Entries.ToArray())
+        $add_filter.AddRange($checkout.idx.Entries.ToArray())
 
         # Reset Working Directory
         $cache = $checkout.PathCache
@@ -639,7 +765,11 @@ function New-Repository {
                 # Replace current file with checkout file
                 if ($c.Name -ne $e.Name)
                 {
-                    Copy-Item $this.FileSystem.Get($c.Name) (Join-Path $this.WorkingDirectory $c.Path) -Force
+                    $full_path = Join-Path $this.WorkingDirectory $c.Path
+                    Copy-Item $this.FileSystem.Get($c.Name) $full_path -Force
+                    $file = Get-Item $full_path
+                    $file.LastWriteTimeUtc = [DateTime]::FromFileTimeUtc($c.mTime)
+                    $file.CreationTimeUtc  = [DateTime]::FromFileTimeUtc($c.cTime)
                 }
             }
         }
@@ -657,6 +787,9 @@ function New-Repository {
 
             # Copy checkout file to working directory
             Copy-Item $this.FileSystem.Get($e.Name) $full_path -Force
+            $file = Get-Item $full_path
+            $file.LastWriteTimeUtc = [DateTime]::FromFileTimeUtc($e.mTime)
+            $file.CreationTimeUtc  = [DateTime]::FromFileTimeUtc($e.cTime)
         }
 
         # Remove entries not a part of this commit
@@ -679,7 +812,7 @@ function New-Repository {
         $this.Index = $checkout
         $this.Index.Write()
 
-        return $this.Index.HEAD
+        return $this.Index.idx.HEAD
     }
 
     <#
@@ -695,6 +828,28 @@ function New-Repository {
             [String]
                 $Source
         )
+
+        # This.Index --> Ours
+
+        # Checkout the source branch commit as index --> Theirs
+
+        # Checkout the current branch parent commit as index --> Parent
+
+        # Compare Ours <==> Parent --> Our-Changes
+
+        # Compare Theirs <==> Parent --> Their-Changes
+
+        # Compare Our-Changes <==> Their-Changes --> File-Conflicts
+
+        # ForEach File-Conflict in File-Conflicts
+
+            # Diff Our-File <==> Parent-File --> Our-Diff
+
+            # Diff Their-File <==> Parent-File --> Their-Diff
+
+            # Compare Our-Diff <==> Their-Diff --> Diff-Conflicts, Diff-Merges
+
+            # Update Diff-Conflicts --> Index
     }
 
     <#
@@ -838,25 +993,21 @@ function New-Repository {
             # The name of the branch from which the new branch is being created from.
             [Parameter(Mandatory = $true)]
             [String]
-                $Source,
-
-            # UTC time of commit.  File time format.
-            [Parameter(Mandatory = $true)]
-            [String]
-                $UtcTime,
-
-            # UTC timezone offset.
-            [Parameter(Mandatory = $true)]
-            [String]
-                $UtcOffset
+                $Source
         )
 
         $log_path = Join-Path $this.Repository logs/refs/heads
         $log_path = Join-Path $log_path $Name
 
-        $parent ='0000000000000000000000000000000000000000'
-        $head   = $this.GetBranchOid($Source)
-        $msg = "{0} {1} {2} <{3}> {4} {5} branch: Created from {6}" -f $parent, $head, $this.User, $this.Email, $UtcTime, $UtcOffset, $Source
+        $msg = "{0} {1} {2} <{3}> {4} {5} branch: Created from {6}" -f `
+            '0000000000000000000000000000000000000000',
+            $this.GetBranchOid($Source),
+            $this.User,
+            $this.Email,
+            [DateTime]::Now.ToFileTimeUtc(),
+            (Get-UtcOffset),
+            $Source
+
         $msg >> $log_path
     }
 
@@ -871,10 +1022,22 @@ function New-Repository {
     #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogCheckout -Value {
         param(
+            # Name of the branch being checked out.
             [Parameter(Mandatory = $true)]
             [String]
                 $Name
         )
+        $log_path = Join-Path $this.Repository logs/HEAD
+        $msg = "{0} {1} {2} <{3}> {4} {5} checkout: moving from {6} to {7}" -f `
+            $this.GetHeadOid(),
+            $this.GetBranchOid($Name),
+            $this.User,
+            $this.Email,
+            [DateTime]::Now.ToFileTimeUtc(),
+            (Get-UtcOffset),
+            $this.GetHeadName(), $Name
+
+        $msg >> $log_path
     }
 
     <#

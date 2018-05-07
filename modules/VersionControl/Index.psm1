@@ -77,6 +77,8 @@ function New-Index {
         $this.idx = ConvertFrom-PSObject (ConvertFrom-Json $content)
         $this.Path = $LiteralPath
 
+        # If index has been changed...
+        $this.Modified = !$this.idx.Commit
         $this.RefreshPathCache()
 
         return $this.idx.HEAD
