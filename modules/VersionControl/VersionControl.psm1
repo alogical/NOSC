@@ -461,7 +461,6 @@ function New-Repository {
             return $true
         }
 
-        $modified = @{}
         $path_filter = [System.Text.RegularExpressions.Regex]::Escape( ($this.WorkingDirectory + '\') )
 
         # Entries that were not found in the working directory
@@ -481,17 +480,12 @@ function New-Repository {
             if ($this.Index.PathCache.Contains($rel_path))
             {
                 $entry = $this.Index.PathCache[$rel_path]
-                [void]$entry_filter.Remove($entry)
-
                 if ($this.Index.CompareEntry($file, $entry) -eq [VersionControl.Repository.Index.CompareResult]::Modified)
                 {
                     return $true
                 }
-            }
-
-            # New file
-            else
-            {
+                [void]$entry_filter.Remove($entry)
+            } else { # New file
                 return $true
             }
         }
