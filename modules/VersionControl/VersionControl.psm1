@@ -851,11 +851,14 @@ function New-Repository {
                 $MergeScript = $Default_Merge
         )
 
-        # Ours -- Decencent --> Theirs
-        #  If their HEAD commit is a direct decendent of ours; FastForward is possible
+        # Ours --Ancestor--> Theirs
+        #  If their MERGE_HEAD commit is a direct decendent of HEAD; FastForward is possible
+        $merge_head_path = Join-Path $this.Repository MERGE_HEAD
+        $merge_head_oid  = $this.GetBranchOid($Source)
+        $merge_head_oid > $merge_head_path
 
-        # Our-->Parent
-        $commit_parent = $null
+        # Recurse(Ours && Theirs) --> Common Ancestor
+        $ancestor_commit = $null
         $commit = ConvertFrom-Json (Get-Item $this.FileSystem.Get($this.Index.idx.HEAD))
         if ($commit)
         {
@@ -863,93 +866,94 @@ function New-Repository {
             {
                 if ($p -ne $NULL_COMMIT)
                 {
-                    $commit_parent = $p
+                    $ancestor_commit = $p
                     break
                 }
             }
         }
 
-        # There is no parent commit from which to perform a three way merge
+        # There is no ancestor commit from which to perform a three way merge
         #  Complain to the user... or:
         #  Consider all files with the same names in ours && theirs to be a conflict
         #  ... or:
         #  Fast Forward all changes to match theirs
-        if ($commit_parent -eq $null)
+        if ($ancestor_commit -eq $null)
         {
-            throw (New-Object System.InvalidOperationException("There is no parent commit from which to perform a three way merge."))
+            throw (New-Object System.InvalidOperationException("There is no ancestor from which to perform a three way merge."))
         }
 
-        # Checkout the current branch parent commit as index --> Parent
-        $parent = New-Index
-        $parent.FileSystem = $this.FileSystem
-        $parent.Checkout($commit_parent)
+        # Checkout the current branch ancestor commit as index --> ancestor
+        $ancestor_index = New-Index
+        $ancestor_index.FileSystem = $this.FileSystem
+        $ancestor_index.Checkout($ancestor_commit)
 
         # Checkout the source branch commit as index --> Theirs
-        $theirs = New-Index
-        $theirs.FileSystem = $this.FileSystem
-        $theirs.Checkout($this.GetBranchOid($Source))
+        $theirs_index = New-Index
+        $theirs_index.FileSystem = $this.FileSystem
+        $theirs_index.Checkout($merge_head_oid)
 
         # Compare Ours <==> Theirs --> Diff
-        $merge_diff = $this.Index.DiffIndex($theirs)
+        $merge_diff = $this.Index.DiffIndex($theirs_index)
 
         # Compare Our-Changes <==> Their-Changes --> Merge-States
         $merge = [PSCustomObject]@{
             # Files that have been modified within both branches.
-            Conflict    = New-Object System.Collections.ArrayList
+            Conflict = New-Object System.Collections.ArrayList
 
             # Files that have been modified by only one branch.
-            FastForward = $null
+            PassThru = $null
 
             # Files deletions.
-            Remove      = New-Object System.Collections.ArrayList
+            Remove   = New-Object System.Collections.ArrayList
         }
 
         # Fast Forward all additions between ours <==> theirs
-        $merge.FastForward = $merge_diff.Additions
+        $merge.PassThru = $merge_diff.Additions
 
         # File version conflicts.
         foreach ($item in $merge_diff.Changed)
         {
-            if ($parent.PathCache.Contains($item.Ours.Path))
+            $path = $item.Ours.Path
+
+            if ($ancestor_index.PathCache.Contains($path))
             {
-                $item.Parent = $parent.PathCache[$item.Ours.Path]
-            }
-            if ($item.Parent -ne $null)
-            {
-                $item.Parent.Merge = [VersionControl.Repository.Index.MergeState]::Parent
+                $item.Ancestor = $ancestor_index.PathCache[$path]
+                $item.Ancestor.Merge = [VersionControl.Repository.Index.MergeState]::Ancestor
             }
             [void]$merge.Conflict.Add($item)
         }
         # 3-way merge of conflicting entries
         $conflicts = & $MergeScript $merge.Conflict
 
-        # Add merge conflict entries --> this.Index
+        # Add file merge conflict entries --> this.Index
         foreach ($conflict in $conflicts)
         {
             [void]$this.Index.Add($conflict.Ours)
             [void]$this.Index.Add($conflict.Theirs)
-            if ($conflict.Parent -ne $null)
+            if ($conflict.Ancestor -ne $null)
             {
-                [void]$this.Index.Add($conflict.Parent)
+                [void]$this.Index.Add($conflict.Ancestor)
             }
         }
 
         # File removal conflicts
         if ($merge_diff.Removed.Count -gt 0)
         {
-            $parent_diff = $parent.DiffIndex($this.Index)
+            $ancestor_diff = $ancestor_index.DiffIndex($this.Index)
 
             foreach ($item in $merge_diff.Removed)
             {
-                # If the file was modified between parent <==> ours --> conflict
-                if ($parent_diff.PathCache[$item.Ours.Path].CompareResult -eq [VersionControl.Repository.Index.CompareResult]::Modified)
+                $path = $item.Ours.Path
+
+                # If the file was modified between ancestor <==> ours --> conflict
+                if ($ancestor_diff.PathCache[$path].CompareResult -eq [VersionControl.Repository.Index.CompareResult]::Modified)
                 {
-                    $item.Parent = $parent_diff.PathCache[$item.Ours.Path].Ours
-                    $item.Parent.Merge = [VersionControl.Repository.Index.MergeState]::Parent
+                    $item.Ancestor = $ancestor_diff.PathCache[$path].Ours
+                    $item.Ancestor.Merge = [VersionControl.Repository.Index.MergeState]::Ancestor
                     $merge.Conflict.Add($item)
                 }
 
-                # If the file is equivalent between parent <==> ours --> FastForward - Remove
+                # If the file is equivalent between ancestor <==> ours --> PassThru - Remove
                 else
                 {
                     [void]$merge.Remove.Add($item)
@@ -1248,6 +1252,7 @@ Import-Module "$AppPath\modules\Common\Objects.psm1"
 $InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
 
 $NULL_COMMIT = '0000000000000000000000000000000000000000'
+$DIFF_EXEC   = "$AppPath\bin\diff.exe"
 
 $Regex = @{}
 $Regex.Head = New-Object System.Text.RegularExpressions.Regex(
@@ -1607,18 +1612,13 @@ $Default_Merge = {
     param(
         # Merge object containing the entries to be merged.
         [Parameter(Mandatory = $true)]
-        [PSCustomObject[]]
-            $MergeObjects
+        [PSCustomObject]
+            $InputObject
     )
 
-    foreach ($merge in $MergeObjects)
-    {
-        $our_content = $merge.Ours.GetContent()
-        $their_content = $merge.Theirs.GetContent()
-        $parent_content = $merge.Parent.GetContent()
+    $merge_diff = & "$DIFF_EXEC $($InputObject.FileSystem.Get($InputObject.Ours.Name)) $($InputObject.FileSystem.Get($InputObject.Theirs.Name))"
+    $our_diff   = & "$DIFF_EXEC $($InputObject.FileSystem.Get($InputObject.Ancestor.Name)) $($InputObject.FileSystem.Get($InputObject.Ours.Name))"
+    $their_diff = & "$DIFF_EXEC $($InputObject.FileSystem.Get($InputObject.Ancestor.Name)) $($InputObject.FileSystem.Get($InputObject.Theirs.Name))"
 
-        $merge_diff = Compare-Object -ReferenceObject $our_content -DifferenceObject $their_content -IncludeEqual -CaseSensitive
-        $our_diff   = Compare-Object -ReferenceObject $parent_content -DifferenceObject $our_content -IncludeEqual -CaseSensitive
-        $their_diff = Compare-Object -ReferenceObject $parent_content -DifferenceObject $their_content -IncludeEqual -CaseSensitive
-    }
+
 }

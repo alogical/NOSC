@@ -26,7 +26,7 @@ namespace VersionControl.Repository {
             None = 0,
             Ours,
             Theirs,
-            Parent
+            Ancestor
         }
     }
 }
@@ -597,38 +597,8 @@ function New-DiffObject {
         CompareResult  = $null
         Ours           = $null
         Theirs         = $null
-        Parent         = $null
+        Ancestor       = $null
         FileSystem     = $null
-    }
-
-    Add-Member -InputObject $diff -MemberType ScriptMethod -Name GetContent -Value {
-        param(
-            [Parameter(Mandatory = $true)]
-            [VersionControl.Repository.Index.MergeState]
-                $EntryType
-        )
-
-        switch ($EntryType)
-        {
-            {$_ -eq [VersionControl.Repository.Index.MergeState]::Ours}{
-                $fullname = $this.FileSystem.Get($this.Ours.Name)
-                return Get-Content $fullname
-            }
-
-            {$_ -eq [VersionControl.Repository.Index.MergeState]::Theirs}{
-                $fullname = $this.FileSystem.Get($this.Theirs.Name)
-                return Get-Content $fullname
-            }
-
-            {$_ -eq [VersionControl.Repository.Index.MergeState]::Parent}{
-                $fullname = $this.FileSystem.Get($this.Parent.Name)
-                return Get-Content $fullname
-            }
-
-            default {
-                return $null
-            }
-        }
     }
 
     return $diff
