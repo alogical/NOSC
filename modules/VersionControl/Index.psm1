@@ -325,7 +325,7 @@ function New-Index {
         Used to compare index and file objects to determine modified files within
         the repository's working directory.
     #>
-    Add-Member -InputObject $Index -MemberType ScriptMethod -Name Compare -Value {
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name CompareEntry -Value {
         param(
             [Parameter(Mandatory = $true)]
             [System.IO.FileInfo]

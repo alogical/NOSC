@@ -153,6 +153,24 @@ function New-Repository {
 
     <#
     .SYNOPSIS
+        Get the names of all branches.
+
+    .DESCRIPTION
+        Retrieves the ref name for all repository branches.
+    #>
+    Add-Member -InputObject $Repository -MemberType ScriptMethod -Name GetBranches -Value {
+        $ref_path = Join-Path $this.Repository refs/heads
+        $pattern  = [System.Text.RegularExpressions.Regex]::Escape($ref_path + '\')
+        $refs     = Get-ChildItem $ref_path -File -Recurse
+        foreach ($ref in $refs)
+        {
+            $name = $ref.FullName -replace $pattern, [String]::Empty
+            Write-Output ($name -replace '\\', '/')
+        }
+    }
+
+    <#
+    .SYNOPSIS
         Get the HEAD object ID for the current branch.
 
     .DESCRIPTION
@@ -388,7 +406,7 @@ function New-Repository {
                 $entry = $this.Index.PathCache[$rel_path]
                 [void]$entry_filter.Remove($entry)
 
-                if ($this.Index.Compare($file, $entry) -eq [VersionControl.Repository.Index.CompareResult]::Modified)
+                if ($this.Index.CompareEntry($file, $entry) -eq [VersionControl.Repository.Index.CompareResult]::Modified)
                 {
                     $modified.Add($rel_path, @{
                             Entry = $entry
@@ -465,7 +483,7 @@ function New-Repository {
                 $entry = $this.Index.PathCache[$rel_path]
                 [void]$entry_filter.Remove($entry)
 
-                if ($this.Index.Compare($file, $entry) -eq [VersionControl.Repository.Index.CompareResult]::Modified)
+                if ($this.Index.CompareEntry($file, $entry) -eq [VersionControl.Repository.Index.CompareResult]::Modified)
                 {
                     return $true
                 }
@@ -829,11 +847,40 @@ function New-Repository {
                 $Source
         )
 
-        # This.Index --> Ours
+        # Our-->Parent || Their-->Parent
+        $commit_parent = $null
+        $commit = ConvertFrom-Json (Get-Item $this.FileSystem.Get($this.Index.idx.HEAD))
+        if ($commit)
+        {
+            foreach ($p in $commit.Parents)
+            {
+                if ($p -ne $NULL_COMMIT)
+                {
+                    $commit_parent = $p
+                    break
+                }
+            }
+        }
 
-        # Checkout the source branch commit as index --> Theirs
+        # There is no parent commit from which to perform a three way merge
+        #  Complain to the user... or:
+        #  Consider all files with the same names in ours && theirs to be a conflict
+        #  ... or:
+        #  Fast Forward all changes to match theirs
+        if ($commit_parent -eq $null)
+        {
+            throw (New-Object System.InvalidOperationException("There is no parent commit from which to perform a three way merge."))
+        }
 
         # Checkout the current branch parent commit as index --> Parent
+        $parent = New-Index
+        $parent.FileSystem = $this.FileSystem
+        $parent.Checkout($commit_parent)
+
+        # Checkout the source branch commit as index --> Theirs
+        $theirs = New-Index
+        $theirs.FileSystem = $this.FileSystem
+        $theirs.Checkout($this.GetBranchOid($Source))
 
         # Compare Ours <==> Parent --> Our-Changes
 
@@ -1000,7 +1047,7 @@ function New-Repository {
         $log_path = Join-Path $log_path $Name
 
         $msg = "{0} {1} {2} <{3}> {4} {5} branch: Created from {6}" -f `
-            '0000000000000000000000000000000000000000',
+            $NULL_COMMIT,
             $this.GetBranchOid($Source),
             $this.User,
             $this.Email,
@@ -1139,6 +1186,8 @@ Import-Module "$AppPath\modules\Common\Objects.psm1"
 
 $InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
 
+$NULL_COMMIT = '0000000000000000000000000000000000000000'
+
 $Regex = @{}
 $Regex.Head = New-Object System.Text.RegularExpressions.Regex(
     '^ref: (?<path>.*)$',
@@ -1174,7 +1223,7 @@ function Initialize-Repository {
     # Returns the directories created | NULL
     $d = New-Item (Join-Path $LiteralPath refs)      -ItemType Directory
     $h = New-Item (Join-Path $d.FullName heads)      -ItemType Directory
-        '0000000000000000000000000000000000000000' > (Join-Path $h.FullName master)
+         $NULL_COMMIT > (Join-Path $h.FullName master)
          New-Item (Join-Path $d.FullName remotes)    -ItemType Directory | Out-Null
          New-Item (Join-Path $d.FullName tags)       -ItemType Directory | Out-Null
 
