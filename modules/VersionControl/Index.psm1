@@ -19,7 +19,14 @@ namespace VersionControl.Repository {
         }
         public enum CompareResult {
             Equivalent,
-            Modified
+            Modified,
+            Removed
+        }
+        public enum MergeState {
+            None = 0,
+            Ours,
+            Theirs,
+            Parent
         }
     }
 }
@@ -319,6 +326,100 @@ function New-Index {
 
     <#
     .SYNOPSIS
+        Compares an index against this index for differences.
+
+    .DESCRIPTION
+        Used to identify differences between (additional files, and different versions
+        of already tracked files) this index and a target index.
+    #>
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name DiffIndex -Value {
+        param(
+            # The index to be compared against this index.
+            [Parameter(Mandatory = $true)]
+            [PSCustomObject]
+                $DifferenceIndex
+        )
+
+        # Difference representation between this index and the target index.
+        $diff = [PSCustomObject]@{
+            # File entries contained in target index, but not this index
+            Additions  = New-Object System.Collections.ArrayList
+
+            # File entries that are not the same between both indexes
+            Changed    = New-Object System.Collections.ArrayList
+
+            # File entries that are the same between both indexes
+            Equivalent = New-Object System.Collections.ArrayList
+
+            # File entries contained by this index, but not the target index
+            Removed    = New-Object System.Collections.ArrayList
+
+            # Quick reference cache
+            PathCache  = @{}
+        }
+
+        $entry_filter = New-Object System.Collections.ArrayList
+        $entry_filter.AddRange($this.idx.Entries.ToArray())
+
+        $pathcache = $this.PathCache
+        foreach ($entry in $DifferenceIndex.Entries)
+        {
+            $object = New-DiffObject
+
+            # File Version Differences
+            if ($pathcache.Contains($entry.Path))
+            {
+                $object.Ours   = $pathcache[$entry.Path]
+                $object.Theirs = $entry
+
+                $object.Ours.Merge   = [VersionControl.Repository.Index.MergeState]::Ours
+                $object.Theirs.Merge = [VersionControl.Repository.Index.MergeState]::Theirs
+
+                # Conflicts
+                if ($entry.Name -ne $pathcache[$entry.Path].Name)
+                {
+                    $object.CompareResult = [VersionControl.Repository.Index.CompareResult]::Modified
+                    [void]$diff.Changed.Add($object)
+                }
+                # Equivalent
+                else
+                {
+                    $object.CompareResult = [VersionControl.Repository.Index.CompareResult]::Equivalent
+                    [void]$diff.Equivalent.Add($object)
+                }
+                $entry_filter.Remove($pathcache[$entry.Path])
+                $diff.PathCache.Add($entry.Path, $object)
+            }
+            # Additional Files
+            else
+            {
+                $entry.Merge = [VersionControl.Repository.Index.MergeState]::Theirs
+                $object.CompareResult  = [VersionControl.Repository.Index.CompareResult]::Modified
+                $object.Theirs = $entry
+
+                [void]$diff.Additions.Add($object)
+                $diff.PathCache.Add($entry.Path, $object)
+            }
+        }
+
+        # Removed Files
+        foreach ($entry in $entry_filter)
+        {
+            $entry.Merge = [VersionControl.Repository.Index.MergeState]::Ours
+
+            $object = New-DiffObject
+            $object.CompareResult  = [VersionControl.Repository.Index.CompareResult]::Removed
+            $object.Ours = $entry
+
+            [void]$diff.Removed.Add($object)
+            $diff.PathCache.Add($entry.Path, $object)
+        }
+
+        return $diff
+    }
+
+    <#
+    .SYNOPSIS
         Performs equivalency comparison between an index entry object and a file.
 
     .DESCRIPTION
@@ -387,6 +488,9 @@ function New-Entry {
 
         # Object type.
         Type   = [VersionControl.Repository.Index.ObjectType]::Entry
+
+        # Merge status state.
+        Merge  = [VersionControl.Repository.Index.MergeState]::None
 
         # Size on disk of the file, truncated to 32-bit.
         Length = [Int32]0
@@ -486,6 +590,48 @@ function New-CacheTree {
         Subtrees = New-Object System.Collections.ArrayList
     }
     return $tree
+}
+
+function New-DiffObject {
+    $diff = [PSCustomObject]@{
+        CompareResult  = $null
+        Ours           = $null
+        Theirs         = $null
+        Parent         = $null
+        FileSystem     = $null
+    }
+
+    Add-Member -InputObject $diff -MemberType ScriptMethod -Name GetContent -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [VersionControl.Repository.Index.MergeState]
+                $EntryType
+        )
+
+        switch ($EntryType)
+        {
+            {$_ -eq [VersionControl.Repository.Index.MergeState]::Ours}{
+                $fullname = $this.FileSystem.Get($this.Ours.Name)
+                return Get-Content $fullname
+            }
+
+            {$_ -eq [VersionControl.Repository.Index.MergeState]::Theirs}{
+                $fullname = $this.FileSystem.Get($this.Theirs.Name)
+                return Get-Content $fullname
+            }
+
+            {$_ -eq [VersionControl.Repository.Index.MergeState]::Parent}{
+                $fullname = $this.FileSystem.Get($this.Parent.Name)
+                return Get-Content $fullname
+            }
+
+            default {
+                return $null
+            }
+        }
+    }
+
+    return $diff
 }
 
 function Build-Cache {

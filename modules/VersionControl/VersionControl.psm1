@@ -844,10 +844,17 @@ function New-Repository {
             # The name of the branch to being merged from.
             [Parameter(Mandatory = $true)]
             [String]
-                $Source
+                $Source,
+
+            [Parameter(Mandatory = $false)]
+            [ScriptBlock]
+                $MergeScript = $Default_Merge
         )
 
-        # Our-->Parent || Their-->Parent
+        # Ours -- Decencent --> Theirs
+        #  If their HEAD commit is a direct decendent of ours; FastForward is possible
+
+        # Our-->Parent
         $commit_parent = $null
         $commit = ConvertFrom-Json (Get-Item $this.FileSystem.Get($this.Index.idx.HEAD))
         if ($commit)
@@ -882,21 +889,75 @@ function New-Repository {
         $theirs.FileSystem = $this.FileSystem
         $theirs.Checkout($this.GetBranchOid($Source))
 
-        # Compare Ours <==> Parent --> Our-Changes
+        # Compare Ours <==> Theirs --> Diff
+        $merge_diff = $this.Index.DiffIndex($theirs)
 
-        # Compare Theirs <==> Parent --> Their-Changes
+        # Compare Our-Changes <==> Their-Changes --> Merge-States
+        $merge = [PSCustomObject]@{
+            # Files that have been modified within both branches.
+            Conflict    = New-Object System.Collections.ArrayList
 
-        # Compare Our-Changes <==> Their-Changes --> File-Conflicts
+            # Files that have been modified by only one branch.
+            FastForward = $null
 
-        # ForEach File-Conflict in File-Conflicts
+            # Files deletions.
+            Remove      = New-Object System.Collections.ArrayList
+        }
 
-            # Diff Our-File <==> Parent-File --> Our-Diff
+        # Fast Forward all additions between ours <==> theirs
+        $merge.FastForward = $merge_diff.Additions
 
-            # Diff Their-File <==> Parent-File --> Their-Diff
+        # File version conflicts.
+        foreach ($item in $merge_diff.Changed)
+        {
+            if ($parent.PathCache.Contains($item.Ours.Path))
+            {
+                $item.Parent = $parent.PathCache[$item.Ours.Path]
+            }
+            if ($item.Parent -ne $null)
+            {
+                $item.Parent.Merge = [VersionControl.Repository.Index.MergeState]::Parent
+            }
+            [void]$merge.Conflict.Add($item)
+        }
+        # 3-way merge of conflicting entries
+        $conflicts = & $MergeScript $merge.Conflict
 
-            # Compare Our-Diff <==> Their-Diff --> Diff-Conflicts, Diff-Merges
+        # Add merge conflict entries --> this.Index
+        foreach ($conflict in $conflicts)
+        {
+            [void]$this.Index.Add($conflict.Ours)
+            [void]$this.Index.Add($conflict.Theirs)
+            if ($conflict.Parent -ne $null)
+            {
+                [void]$this.Index.Add($conflict.Parent)
+            }
+        }
 
-            # Update Diff-Conflicts --> Index
+        # File removal conflicts
+        if ($merge_diff.Removed.Count -gt 0)
+        {
+            $parent_diff = $parent.DiffIndex($this.Index)
+
+            foreach ($item in $merge_diff.Removed)
+            {
+                # If the file was modified between parent <==> ours --> conflict
+                if ($parent_diff.PathCache[$item.Ours.Path].CompareResult -eq [VersionControl.Repository.Index.CompareResult]::Modified)
+                {
+                    $item.Parent = $parent_diff.PathCache[$item.Ours.Path].Ours
+                    $item.Parent.Merge = [VersionControl.Repository.Index.MergeState]::Parent
+                    $merge.Conflict.Add($item)
+                }
+
+                # If the file is equivalent between parent <==> ours --> FastForward - Remove
+                else
+                {
+                    [void]$merge.Remove.Add($item)
+                }
+            }
+        }
+
+        # REUC - Resolve Undo Conflicts index extension
     }
 
     <#
@@ -1532,5 +1593,32 @@ function Get-UtcOffset {
     else
     {
         return ("{0:d2}{1:d2}" -f $offset.Hours, $offset.Minutes)
+    }
+}
+
+<#
+.SYNOPSIS
+    Performs a 3-way merge between two files and a common parent.
+
+.DESCRIPTION
+    Used to perform a 3-way merge for UTF8 documents.
+#>
+$Default_Merge = {
+    param(
+        # Merge object containing the entries to be merged.
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject[]]
+            $MergeObjects
+    )
+
+    foreach ($merge in $MergeObjects)
+    {
+        $our_content = $merge.Ours.GetContent()
+        $their_content = $merge.Theirs.GetContent()
+        $parent_content = $merge.Parent.GetContent()
+
+        $merge_diff = Compare-Object -ReferenceObject $our_content -DifferenceObject $their_content -IncludeEqual -CaseSensitive
+        $our_diff   = Compare-Object -ReferenceObject $parent_content -DifferenceObject $our_content -IncludeEqual -CaseSensitive
+        $their_diff = Compare-Object -ReferenceObject $parent_content -DifferenceObject $their_content -IncludeEqual -CaseSensitive
     }
 }
