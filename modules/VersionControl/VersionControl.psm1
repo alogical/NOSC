@@ -842,7 +842,7 @@ function New-Repository {
 
             [Parameter(Mandatory = $false)]
             [ScriptBlock]
-                $MergeScript = $Default_Merge
+                $MergeScript = ${$Merge-Text}
         )
 
         # Ours --Ancestor--> Theirs
@@ -1602,7 +1602,7 @@ function Get-UtcOffset {
 .DESCRIPTION
     Used to perform a 3-way merge for UTF8 documents.
 #>
-$Default_Merge = {
+function Merge-Text {
     param(
         # Merge object containing the entries to be merged.
         [Parameter(Mandatory = $true)]
@@ -1610,9 +1610,66 @@ $Default_Merge = {
             $InputObject
     )
 
-    $merge_diff = & "$DIFF_EXEC $($InputObject.FileSystem.Get($InputObject.Ours.Name)) $($InputObject.FileSystem.Get($InputObject.Theirs.Name))"
-    $our_diff   = & "$DIFF_EXEC $($InputObject.FileSystem.Get($InputObject.Ancestor.Name)) $($InputObject.FileSystem.Get($InputObject.Ours.Name))"
-    $their_diff = & "$DIFF_EXEC $($InputObject.FileSystem.Get($InputObject.Ancestor.Name)) $($InputObject.FileSystem.Get($InputObject.Theirs.Name))"
+    $our_diff   = Parse-Diff (& "$DIFF_EXEC $($InputObject.FileSystem.Get($InputObject.Ancestor.Name)) $($InputObject.FileSystem.Get($InputObject.Ours.Name))")
+    $their_diff = Parse-Diff (& "$DIFF_EXEC $($InputObject.FileSystem.Get($InputObject.Ancestor.Name)) $($InputObject.FileSystem.Get($InputObject.Theirs.Name))")
 
+    $overlaps = New-Object System.Collections.ArrayList
+}
 
+<#
+.SYNOPSIS
+    Parses diff output into a dictionary of changes.
+
+.DESCRIPTION
+    Used to convert the text output of diff into a structured
+    object representing the diff.
+#>
+function Parse-Diff {
+    param(
+        [Parameter(Mandatory = $true)]
+        [String[]]
+            $Diff
+    )
+
+    # Key --> [Left File Starting Index]
+    $dict = @{}
+    for ($i = 0; $i -lt $Diff.Count; $i++)
+    {
+        if ($Diff[$i] -match '^(\d+),?(\d+)?(\w)(\d+),?(\d+)?')
+        {
+            $lstart = $Matches[1]
+            $lstop  = $Matches[2]
+            $action = $Matches[3]
+            $rstart = $Matches[4]
+            $rstop  = $Matches[5]
+        }
+        else
+        {
+            throw (New-Object System.ApplicationException("Parse diff header failed."))
+        }
+
+        if ($lstop -ne $null) { $llen = $lstop - $lstart } else { $llen = 1 }
+        if ($rstop -ne $null) { $rlen = $rstop - $rstart } else { $rlen = 1 }
+
+        switch ($action)
+        {
+            # Addition
+            a
+            {
+            }
+            # Deletion
+            d
+            {
+            }
+            # Change
+            c
+            {
+            }
+            default {
+                throw (New-Object System.ApplicationException("Unknown diff edit action."))
+            }
+        }
+
+        $ledits = New-Object
+    }
 }
