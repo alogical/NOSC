@@ -25,21 +25,6 @@ namespace VersionControl {
             Tag
         }
     }
-
-    namespace Diff {
-        public enum EditAction {
-            None,
-            Addition,
-            Deletion,
-            Change
-        }
-
-        public enum LineState {
-            Original,
-            Modified,
-            Conflicted
-        }
-    }
 }
 "@
 
@@ -855,43 +840,45 @@ function New-Repository {
             [String]
                 $Source,
 
+            [Parameter(Mandatory = $true)]
+            [Bool]
+                $FastForward = $true,
+
             [Parameter(Mandatory = $false)]
             [ScriptBlock]
                 $MergeScript = ${$Merge-Text}
         )
 
-        # Ours --Ancestor--> Theirs
-        #  If their MERGE_HEAD commit is a direct decendent of HEAD; FastForward is possible
+        # Control Flags
+        $ff_merge_possible = $false # Fast-Forward Merge is possible
+
+        $commit = ConvertFrom-Json (Get-Item $this.FileSystem.Get($this.Index.idx.HEAD))
         $merge_head_path = Join-Path $this.Repository MERGE_HEAD
         $merge_head_oid  = $this.GetBranchOid($Source)
         $merge_head_oid > $merge_head_path
 
-        # Recurse(Ours && Theirs) --> Common Ancestor
-        $ancestor_commit = $null
-        $commit = ConvertFrom-Json (Get-Item $this.FileSystem.Get($this.Index.idx.HEAD))
-        if ($commit)
-        {
-            foreach ($p in $commit.Parents)
-            {
-                if ($p -ne $NULL_COMMIT)
-                {
-                    $ancestor_commit = $p
-                    break
-                }
-            }
-        }
+        # Find common ancestor between the HEADs of the two branches
+        $ancestor_commit = Get-CommonAncestor -CommitA $this.Index.idx.HEAD -CommitB $this.GetBranchOid($Source) -FileSystem $this.FileSystem
 
         # There is no ancestor commit from which to perform a three way merge
         #  Complain to the user... or:
         #  Consider all files with the same names in ours && theirs to be a conflict
         #  ... or:
-        #  Fast Forward all changes to match theirs
+        #  Fast Forward all conflicts to theirs || ours
         if ($ancestor_commit -eq $null)
         {
             throw (New-Object System.InvalidOperationException("There is no ancestor from which to perform a three way merge."))
         }
 
-        # Checkout the current branch ancestor commit as index --> ancestor
+        # Ours -- is ancestor --> Theirs
+        #  If their MERGE_HEAD commit is a direct decendent of HEAD; FastForward is possible
+        if ($ancestor_commit -eq $this.Index.idx.HEAD)
+        {
+            $ff_merge_possible = $true
+        }
+
+        # ----------------------START RECURSIVE MERGE--------------------------
+        # Checkout the ancestor commit as index --> ancestor
         $ancestor_index = New-Index
         $ancestor_index.FileSystem = $this.FileSystem
         $ancestor_index.Checkout($ancestor_commit)
@@ -904,7 +891,9 @@ function New-Repository {
         # Compare Ours <==> Theirs --> Diff
         $merge_diff = $this.Index.DiffIndex($theirs_index)
 
-        # Compare Our-Changes <==> Their-Changes --> Merge-States
+        # ---------------------------------------------------------------------
+        # Merge Our-Changes <==> Their-Changes --> Merge-States
+        # ---------------------------------------------------------------------
         $merge = [PSCustomObject]@{
             # Files that have been modified within both branches.
             FileConflict = New-Object System.Collections.ArrayList
@@ -916,10 +905,12 @@ function New-Repository {
             Remove   = New-Object System.Collections.ArrayList
         }
 
-        # Fast Forward all additions between ours <==> theirs
+        # ----------------------UNCONTESTED ADDITIONS--------------------------
+        # Fast Forward all file additions between ours <==> theirs
         $merge.PassThru = $merge_diff.Additions
 
-        # File version conflicts.
+        # ------------------------MODIFIED CONFLICTS---------------------------
+        # Find ancestors for file version conflicts.
         foreach ($item in $merge_diff.Changed)
         {
             $path = $item.Ours.Path
@@ -931,6 +922,7 @@ function New-Repository {
             }
             [void]$merge.FileConflict.Add($item)
         }
+
         # 3-way merge of conflicting entries
         $unresolved = New-Object System.Collections.ArrayList
         foreach ($file_conflict in $merge.FileConflict)
@@ -942,7 +934,7 @@ function New-Repository {
             }
         }
 
-        # Add file merge conflict entries --> this.Index
+        # Add unresolved file level merge conflicts --> this.Index
         foreach ($conflict in $unresolved)
         {
             [void]$this.Index.Add($conflict.Ours)
@@ -953,6 +945,7 @@ function New-Repository {
             }
         }
 
+        # ------------------------REMOVED CONFLICTS----------------------------
         # File removal conflicts
         if ($merge_diff.Removed.Count -gt 0)
         {
@@ -1264,12 +1257,11 @@ Export-ModuleMember -Function *
 
 Import-Module "$AppPath\modules\VersionControl\FileSystem.psm1"
 Import-Module "$AppPath\modules\VersionControl\Index.psm1"
+Import-Module "$AppPath\modules\VersionControl\MergeText.psm1"
 Import-Module "$AppPath\modules\Common\Objects.psm1"
 
 $InvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
-
-$NULL_COMMIT = '0000000000000000000000000000000000000000'
-$DIFF_EXEC   = "$AppPath\bin\diff.exe"
+$NULL_COMMIT     = '0000000000000000000000000000000000000000'
 
 $Regex = @{}
 $Regex.Head = New-Object System.Text.RegularExpressions.Regex(
@@ -1320,6 +1312,8 @@ function Initialize-Repository {
     New-Item $FileSystem.Init($fs_path)
     'ref: refs/heads/master' > $head_path
 }
+
+# Commit Support --------------------------------------------------------------
 
 <#
 .SYNOPSIS
@@ -1480,6 +1474,8 @@ function Build-Tree {
     return $oid
 }
 
+# Object Constructors ---------------------------------------------------------
+
 <#
 .SYNOPSIS
     Commit object constructor.
@@ -1554,6 +1550,164 @@ function New-Tree {
     return $tree
 }
 
+# Merge Support ---------------------------------------------------------------
+
+<#
+.SYNOPSIS
+    Recursively builds an ancestry hash-table for a commit.
+
+.DESCRIPTION
+    Used to build the ancestry of a commit that is required when searching for
+    a common ancestor between two commits.
+#>
+function New-Ancestry {
+    param(
+        # Object ID (oid) of the commit for which we are building an ancestry table.
+        [Parameter(Mandatory = $true)]
+        [String]
+            $Commit,
+
+        # Content addressable filesystem containing the commit objects.
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]
+            $FileSystem,
+
+        # Ancestry table.
+        [Parameter(Mandatory = $false)]
+        [Hashtable]
+            $Ancestors = @{}
+    )
+
+    $json = Get-Content $FileSystem.Get($Commit) -Raw
+    $object = ConvertFrom-Json $json
+    foreach ($parent in $object.Parents)
+    {
+        if ($Ancestors.Contains($parent))
+        {
+            continue
+        }
+
+        $Ancestors.Add($parent, $null)
+        New-Ancestry -Commit $parent -Ancestors $Ancestors -FileSystem $FileSystem
+    }
+}
+
+<#
+.SYNOPSIS
+    Get the common ancestor commit of two inputs.
+
+.DESCRIPTION
+    Used to locate the common ancestor of two commits that is needed when
+    performing an 3-way merge of commits.
+#>
+function Get-CommonAncestor {
+    param(
+        # SHA1 Object ID of the reference commit.
+        [Parameter(Mandatory = $true)]
+        [String]
+            $CommitA,
+
+        # SHA1 Object ID of the different commit.
+        [Parameter(Mandatory = $true)]
+        [String]
+            $CommitB,
+
+        # Content addressable filesystem that holds the commits.
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]
+            $FileSystem
+    )
+
+    # Parent ancestry for input commits.
+    $ancestry = New-Ancestry -Commit $CommitA -FileSystem $FileSystem
+
+    # Parent ancestry for CommitB
+    $common = Find-CommonAncestor -Commit $CommitB -FileSystem $FileSystem -Ancestors $ancestry
+
+    return $common
+}
+
+<#
+.SYNOPSIS
+    Recursively searches for a common ancestor within an ancestry table.
+
+.DESCRIPTION
+    Returns the object ID of the first parent object ID that already exists in
+    the ancestry table (common ancestor of two commits), or NULL.
+#>
+function Find-CommonAncestor {
+    param(
+        # Object ID (oid) of the commit we are searching for a common ancestor of.
+        [Parameter(Mandatory = $true)]
+        [String]
+            $Commit,
+
+        # Content addressable filesystem containing the commit objects.
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]
+            $FileSystem,
+
+        # Ancestry table.
+        [Parameter(Mandatory = $true)]
+        [Hashtable]
+            $Ancestors
+    )
+
+    # End of the line // nothing more to search
+    if ($Commit -eq $NULL_COMMIT)
+    {
+        return $null
+    }
+
+    $json = Get-Content $FileSystem.Get($Commit) -Raw
+    $object = ConvertFrom-Json $json
+    foreach ($parent in $object.Parents)
+    {
+        # Parent is the common ancestor
+        if ($Ancestors.Contains($parent))
+        {
+            return $parent
+        }
+
+        $common = New-Ancestry -Commit $parent -Ancestors $Ancestors -FileSystem $FileSystem
+
+        # Common ancestor found on this branch
+        if ($common -ne $null)
+        {
+            return $common
+        }
+    }
+
+    # No common ancestor was found for this branch
+    return $null
+}
+
+# Logging Support -------------------------------------------------------------
+
+<#
+.SYNOPSIS
+    Get the system's timezone UTC offset.
+
+.DESCRIPTION
+    Calculates the UTC offset of the system timezone so timestamps can be converted
+    back into the local time of the author for a commit and logs.
+#>
+function Get-UtcOffset {
+    $tz = Get-TimeZone
+    $offset = $tz.GetUtcOffset( (Get-Date) )
+
+    if ($offset.Hours -gt 0)
+    {
+        return ("+{0:d2}{1:d2}" -f $offset.Hours, $offset.Minutes)
+    }
+    else
+    {
+        return ("{0:d2}{1:d2}" -f $offset.Hours, $offset.Minutes)
+    }
+}
+
+# Repository Utilities --------------------------------------------------------
+
 <#
 .SYNOPSIS
     Recursively retrieves the sub-tree of a tree.
@@ -1594,589 +1748,4 @@ function Get-SubTree {
     }
 
     return $null
-}
-
-<#
-.SYNOPSIS
-    Get the system's timezone UTC offset.
-
-.DESCRIPTION
-    Calculates the UTC offset of the system timezone so timestamps can be converted
-    back into the local time of the author for a commit and logs.
-#>
-function Get-UtcOffset {
-    $tz = Get-TimeZone
-    $offset = $tz.GetUtcOffset( (Get-Date) )
-
-    if ($offset.Hours -gt 0)
-    {
-        return ("+{0:d2}{1:d2}" -f $offset.Hours, $offset.Minutes)
-    }
-    else
-    {
-        return ("{0:d2}{1:d2}" -f $offset.Hours, $offset.Minutes)
-    }
-}
-
-<#
-.SYNOPSIS
-    Performs a 3-way merge between two files and a common parent.
-
-.DESCRIPTION
-    Used to perform a 3-way merge for UTF8 documents.
-#>
-function Merge-Text {
-    param(
-        # Merge object containing the entries to be merged.
-        [Parameter(Mandatory = $true)]
-        [PSCustomObject]
-            $InputObject
-    )
-
-    # Get Ancestor content
-    $ancestor = Get-Content $InputObject.FileSystem.Get($InputObject.Ancestor.Name)
-
-    $ours   = Parse-Diff (& "$DIFF_EXEC $($InputObject.FileSystem.Get($InputObject.Ancestor.Name)) $($InputObject.FileSystem.Get($InputObject.Ours.Name))")
-    $theirs = Parse-Diff (& "$DIFF_EXEC $($InputObject.FileSystem.Get($InputObject.Ancestor.Name)) $($InputObject.FileSystem.Get($InputObject.Theirs.Name))")
-    $merge  = Compare-Diff3 $ours $theirs $ancestor.Count
-
-    # Write new output file with line sources from Ancestor or merge edits.
-    $edit_index  = 0
-    $output_file = [String]::Empty
-    $state = $merge.LineStates
-    for ($i = 0; $i -lt $ancestor.Count; $i++)
-    {
-        # Unedited line:
-        if ($state[$i] -eq [VersionControl.Diff.LineState]::Original)
-        {
-            # write original ancestor line
-            $ancestor[$i] >> $output_file
-        }
-        # Edited line:
-        else
-        {
-            $edit = $merge.Ordered[$edit_index++]
-
-            if ($state[$i] -eq [VersionControl.Diff.LineState]::Conflicted)
-            {
-                if ($merge.OverlapsA.Contains($i))
-                {
-                    $conflicts = $merge.OverlapsA[$i]
-                    $our_edit = $true
-                }
-                elseif ($merge.OverlapsB.Contains($i))
-                {
-                    $conflicts = $merge.OverlapsB[$i]
-                    $our_edit = $false
-                }
-                else
-                {
-                    throw (New-Object System.ApplicationException(""))
-                }
-
-                # ===>
-                '===>' >> $output_file
-
-                # Write Their Version
-                if ($our_edit)
-                {
-                    foreach ($conflict in $conflicts)
-                    {
-                        $edit_index++
-                        foreach ($line in $conflict.rlines)
-                        {
-                            $line >> $output_file
-                        }
-                    }
-                }
-                else
-                {
-                    foreach ($line in $edit.rlines)
-                    {
-                        $line >> $output_file
-                    }
-                }
-
-                # ========
-                '========' >> $output_file
-
-                # Write Our Version
-                if ($our_edit)
-                {
-                    foreach ($line in $edit.rlines)
-                    {
-                        $line >> $output_file
-                    }
-                }
-                else
-                {
-                    foreach ($conflict in $conflicts)
-                    {
-                        $edit_index++
-                        foreach ($line in $conflict.rlines)
-                        {
-                            $line >> $output_file
-                        }
-                    }
-                }
-
-                # <===
-                '<===' >> $output_file
-            }
-            # Else (not conflicted):
-            else
-            {
-                # Write merge.edit version
-                foreach ($line in $edit.rlines)
-                {
-                    $line >> $output_file
-                    $i++
-                }
-            }
-        }
-    }
-
-    # Verify all edits have been written
-    if ($edit_index -ne $merge.Ordered.Count - 1)
-    {
-        throw (New-Object System.ApplicationException("All edits should have been written, but weren't!"))
-    }
-
-    # Return if merged files had conflict lines
-    return ($merge.Conflicts.Count -gt 0)
-}
-
-<#
-.SYNOPSIS
-    Compares two diffs between a common ancestor and two changed files.
-
-.DESCRIPTION
-    Used to perform a 3-way merge for UTF8 documents.
-#>
-function Compare-Diff3 {
-    param(
-        [Parameter(Mandatory = $true)]
-        [System.Collections.ArrayList]
-            $DiffA,
-
-        [Parameter(Mandatory = $true)]
-        [System.Collections.ArrayList]
-            $DiffB,
-
-        [Parameter(Mandatory = $true)]
-        [Int]
-            $AncestorLength
-    )
-    # Current position within DiffB to optimize multiple passes
-    $seek = 0
-
-    # Ordered list of edits
-    $ordered   = New-Object System.Collections.ArrayList
-
-    # List of all conflicting edits
-    $conflicts = New-Object System.Collections.ArrayList
-
-    # DiffA edits that overlap multiple DiffB edits
-    $overlap_a = @{}
-
-    # DiffB edits that overlap multiple DiffA edits
-    $overlap_b = @{}
-
-    # Ancestor line edit state
-    #  line is unedited [original], edited [modified], or in conflict between a and b [conflicted]
-    $line_states = New-Object VersionControl.Diff.LineState[] $AncestorLength
-    $line_count  = $line_states.Count
-    $line_max    = $line_states.Count - 1
-
-    # Record DiffB lines as modified (0 based array)
-    #  This is required as we may pass over the same record more than once in the DiffB array.
-    #  as we search for conflicts with DiffA.
-    foreach ($b in $DiffB)
-    {
-        if ($b.lstart -le $line_count)
-        {
-            if ($b.lstop -ge $line_count)
-            {
-                $sstop = $line_max
-            }
-            else
-            {
-                $sstop = $b.lstop - 1
-            }
-            for ($s = $b.lstart - 1; $s -lt $sstop; $s++)
-            {
-                $line_states[$s] = [VersionControl.Diff.LineState]::Modified
-            }
-        }
-
-        if ($sstop -eq $line_max)
-        {
-            break
-        }
-    }
-
-    foreach ($a in $DiffA)
-    {
-        # Record the lines as modified (0 based array)
-        if ($a.lstart -le $line_count)
-        {
-            if ($a.lstop -ge $line_count)
-            {
-                $sstop = $line_max
-            }
-            else
-            {
-                $sstop = $a.lstop - 1
-            }
-            for ($s = $a.lstart - 1; $s -lt $sstop; $s++)
-            {
-                $line_states[$s] = [VersionControl.Diff.LineState]::Modified
-            }
-        }
-
-        for ($i = $seek; $i -lt $DiffB.Count; $i++)
-        {
-            $b = $DiffB[$i]
-
-            # [a...]
-            #   [b...]
-            if ($a.lstart -le $b.lstart -and $a.lstop -ge $b.lstart)
-            {
-
-                # Record the lines as conflicted (0 based array)
-                if ($a.lstart -lt $line_count)
-                {
-                    # All lines of both edit records are considered in conflict for overlaps even if
-                    # some of the changes don't overlap.
-                    if ($a.lstop -gt $b.lstop)
-                    {
-                        $sstop = $a.lstop - 1
-                    }
-                    else
-                    {
-                        $sstop = $b.lstop - 1
-                    }
-
-                    # Index out of range protection
-                    if ($sstop -ge $line_count)
-                    {
-                        $sstop = $line_max
-                    }
-                    for ($s = $a.lstart - 1; $s -lt $sstop; $s++)
-                    {
-                        $line_states[$s] = [VersionControl.Diff.LineState]::Conflicted
-                    }
-                }
-
-                if (!$ordered.Contains($a))
-                {
-                    [void]$ordered.Add($a)
-                }
-                else
-                {
-                    [void]$ordered.Add($b)
-                }
-
-                # [a..............]
-                #   [b...][b...][b...]
-                if (!$overlap_a.Contains($a.lstart))
-                {
-                    $overlap_a.Add($a.lstart, (New-Object System.Collections.ArrayList))
-                }
-                [void]$overlap_a[$a.lstart].Add($b)
-
-                $c = [PSCustomObject]@{a = $a; b = $b}
-                [void]$conflicts.Add($c)
-                continue
-            }
-
-            #   [a...]
-            # [b...]
-            if ($a.lstart -ge $b.lstart -and $a.lstart -le $b.lstop)
-            {
-                # Record the lines as conflicted (0 based array)
-                if ($b.lstart -lt $line_count)
-                {
-                    # All lines of both edit records are considered in conflict for overlaps even if
-                    # some of the changes don't overlap.
-                    if ($a.lstop -gt $b.lstop)
-                    {
-                        $sstop = $a.lstop - 1
-                    }
-                    else
-                    {
-                        $sstop = $b.lstop - 1
-                    }
-
-                    # Index out of range protection
-                    if ($sstop -ge $line_count)
-                    {
-                        $sstop = $line_max
-                    }
-                    for ($s = $b.lstart - 1; $s -lt $sstop; $s++)
-                    {
-                        $line_states[$s] = [VersionControl.Diff.LineState]::Conflicted
-                    }
-                }
-
-                if (!$ordered.Contains($b))
-                {
-                    [void]$ordered.Add($b)
-                }
-
-                #   [a...][a...][a...]
-                # [b...............]
-                if (!$overlap_b.Contains($b.lstart))
-                {
-                    $overlap_b.Add($b.lstart, (New-Object System.Collections.ArrayList))
-                }
-                [void]$overlap_b[$b.lstart].Add($a)
-
-                $c = [PSCustomObject]@{a = $a; b = $b}
-                [void]$conflicts.Add($c)
-                continue
-            }
-
-            # Optimize multiple passes over the b edits array
-            # [a...]
-            #        [b...]
-            if ($a.lstop -lt $b.lstart)
-            {
-                if (!$ordered.Contains($a))
-                {
-                    [void]$ordered.Add($a)
-                }
-                if (!$ordered.Contains($b))
-                {
-                    [void]$ordered.Add($b)
-                }
-
-                $seek = $i
-                break
-            }
-
-            # Optimize multiple passes over the b edits array
-            #        [a...]
-            # [b...]
-            if ($a.lstart -gt $b.lstop)
-            {
-                if (!$ordered.Contains($b))
-                {
-                    [void]$ordered.Add($b)
-                }
-                if (!$ordered.Contains($a))
-                {
-                    [void]$ordered.Add($a)
-                }
-
-                $seek = $i + 1
-                break
-            }
-
-            # DiffA has more edits
-            #         [a...]++
-            # [b=EOF]
-            [void]$ordered.Add($a)
-        }
-    }
-
-    # DiffB has more edits
-    # [a=EOF]
-    #         [b...]++
-    if ($seek -lt $DiffB.Count)
-    {
-        for ($i = $seek; $i -lt $DiffB.Count; $i++)
-        {
-            [void]$ordered.Add($DiffB[$i])
-        }
-    }
-
-    return [PSCustomObject]@{
-        LineStates = $line_states
-        Ordered    = $ordered
-        Conflicts  = $conflicts
-        OverlapsA  = $overlap_a
-        OverlapsB  = $overlap_b
-    }
-}
-
-<#
-.SYNOPSIS
-    Constructs a new Diff edit record.
-
-.DESCRIPTION
-    Data structure object constructor for diff edit records.
-#>
-function New-Edit {
-    param(
-        [Parameter(Mandatory = $false)]
-        [String]
-            $header = [String]::Empty
-    )
-
-    $edit = [PSCustomObject]@{
-        action  = [VersionControl.Diff.EditAction]::None
-        header  = [String]::Empty
-        lstart  = 0
-        lstop   = 0
-        llines  = New-Object System.Collections.ArrayList
-        llength = 0
-        rstart  = 0
-        rstop   = 0
-        rlength = 0
-        rlines  = New-Object System.Collections.ArrayList
-        parsed  = $false
-    }
-
-    Add-Member -InputObject $edit -MemberType ScriptMethod -Name ParseHeader -Value $EDIT_PARSE_HEADER
-
-    if (![String]::IsNullOrEmpty($header))
-    {
-        $edit.ParseHeader($header)
-    }
-
-    return $edit
-}
-
-<#
-.SYNOPSIS
-    Edit record method scriptblock.
-
-.DESCRIPTION
-    Scriptblock for a diff edit record.ParseHeader() method. The ParseHeader method
-    is written as a named scriptblock as an optimization.  This way, a new anonymous
-    function doesn't have to be created for what may be hundreds of objects.
-#>
-$EDIT_PARSE_HEADER = {
-    param(
-        [Parameter(Mandatory = $true)]
-        [String]
-            $header
-    )
-
-    if ($this.parsed -eq $true)
-    {
-        throw (New-Object System.ApplicationException("Edit record header already parsed. [$($this.header)]"))
-    }
-
-    $this.header = $header
-
-    if ($header -match '^(\d+),?(\d+)?(\w)(\d+),?(\d+)?')
-    {
-        if ($Matches[1] -ne $null) {$this.lstart = [int]($Matches[1])} else {$this.lstart = 0}
-        if ($Matches[2] -ne $null) {$this.lstop  = [int]($Matches[2])} else {$this.lstop  = 0}
-        $this.action = $Matches[3]
-        if ($Matches[4] -ne $null) {$this.rstart = [int]($Matches[4])} else {$this.rstart = 0}
-        if ($Matches[5] -ne $null) {$this.rstop  = [int]($Matches[5])} else {$this.rstop  = 0}
-
-        if ($this.lstop -eq 0)
-        {
-            $this.llength = 0
-            $this.lstop   = $this.lstart
-        }
-        else
-        {
-            $this.llength = $this.lstop - $this.lstart
-        }
-
-        if ($this.rstop -eq 0)
-        {
-            $this.rlength = 0
-            $this.rstop   = $this.rstart
-        }
-        else
-        {
-            $this.rlength = $this.rstop - $this.rstart
-        }
-    }
-    else
-    {
-        throw (New-Object System.ApplicationException("Parse diff header failed. [$header]"))
-    }
-
-    switch ($Matches[3])
-    {
-        # Addition
-        a { $this.action = [VersionControl.Diff.EditAction]::Addition }
-        # Deletion
-        d { $this.action = [VersionControl.Diff.EditAction]::Deletion }
-        # Change
-        c { $this.action = [VersionControl.Diff.EditAction]::Change }
-        default {
-            throw (New-Object System.ApplicationException("Unknown diff edit action."))
-        }
-    }
-}
-
-<#
-.SYNOPSIS
-    Parses diff output into a dictionary of changes.
-
-.DESCRIPTION
-    Used to convert the text output of diff into a structured
-    object representing the diff.
-#>
-function Parse-Diff {
-    param(
-        [Parameter(Mandatory = $true)]
-        [String[]]
-            $Diff
-    )
-
-    # Parsed diff content
-    $parse = New-Object System.Collections.ArrayList
-    $eof = $false
-
-    # Diff sequential line parser
-    for ($i = 0; $i -lt $Diff.Count; $i++)
-    {
-        if ($eof) { break }
-
-        $edit = New-Edit $Diff[$i]
-        [void]$parse.Add($edit)
-
-        if ($edit.Action -eq [VersionControl.Diff.EditAction]::Change)
-        {
-            for ($l = 0; $l -le $edit.llength; $l++)
-            {
-                $i++
-                [void]$edit.llines.Add( ($Diff[$i] -replace '< ', [String]::Empty) )
-            }
-
-            # Skip section divider "---"
-            $i++
-            # End of File marker for the diff
-            if ($Diff[$i] -eq '\ No newline at end of file')
-            {
-                $eof = $true
-                $i++
-            }
-
-            for ($r = 0; $r -le $edit.rlength; $r++)
-            {
-                $i++
-                [void]$edit.rlines.Add( ($Diff[$i] -replace '> ', [String]::Empty) )
-            }
-        }
-
-        if ($edit.Action -eq [VersionControl.Diff.EditAction]::Addition)
-        {
-            for ($r = 0; $r -le $edit.rlength; $r++)
-            {
-                $i++
-                [void]$edit.rlines.Add( ($Diff[$i] -replace '> ', [String]::Empty) )
-            }
-        }
-
-        if ($edit.Action -eq [VersionControl.Diff.EditAction]::Deletion)
-        {
-            for ($l = 0; $l -le $edit.llength; $l++)
-            {
-                $i++
-                [void]$edit.llines.Add( ($Diff[$i] -replace '< ', [String]::Empty) )
-            }
-        }
-    }
-
-    return $parse
 }
