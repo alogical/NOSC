@@ -24,6 +24,11 @@ namespace VersionControl {
             Tree,
             Tag
         }
+
+        public enum MergeStrategy {
+            FastForward,
+            Recursive
+        }
     }
 }
 "@
@@ -840,10 +845,12 @@ function New-Repository {
             [String]
                 $Source,
 
+            # Fast forward merge flag (default) or Recursive merge
             [Parameter(Mandatory = $true)]
             [Bool]
                 $FastForward = $true,
 
+            # Low-level merge algorithm.
             [Parameter(Mandatory = $false)]
             [ScriptBlock]
                 $MergeScript = ${$Merge-Text}
@@ -852,126 +859,53 @@ function New-Repository {
         # Control Flags
         $ff_merge_possible = $false # Fast-Forward Merge is possible
 
-        $commit = ConvertFrom-Json (Get-Item $this.FileSystem.Get($this.Index.idx.HEAD))
+        # Target branch
+        $target_head_oid = $this.Index.idx.HEAD
+
+        # Determine Merge HEAD object ID (oid)
         $merge_head_path = Join-Path $this.Repository MERGE_HEAD
         $merge_head_oid  = $this.GetBranchOid($Source)
         $merge_head_oid > $merge_head_path
-
-        # Find common ancestor between the HEADs of the two branches
-        $ancestor_commit = Get-CommonAncestor -CommitA $this.Index.idx.HEAD -CommitB $this.GetBranchOid($Source) -FileSystem $this.FileSystem
-
-        # There is no ancestor commit from which to perform a three way merge
-        #  Complain to the user... or:
-        #  Consider all files with the same names in ours && theirs to be a conflict
-        #  ... or:
-        #  Fast Forward all conflicts to theirs || ours
-        if ($ancestor_commit -eq $null)
-        {
-            throw (New-Object System.InvalidOperationException("There is no ancestor from which to perform a three way merge."))
-        }
-
-        # Ours -- is ancestor --> Theirs
-        #  If their MERGE_HEAD commit is a direct decendent of HEAD; FastForward is possible
-        if ($ancestor_commit -eq $this.Index.idx.HEAD)
-        {
-            $ff_merge_possible = $true
-        }
-
-        # ----------------------START RECURSIVE MERGE--------------------------
-        # Checkout the ancestor commit as index --> ancestor
-        $ancestor_index = New-Index
-        $ancestor_index.FileSystem = $this.FileSystem
-        $ancestor_index.Checkout($ancestor_commit)
 
         # Checkout the source branch commit as index --> Theirs
         $theirs_index = New-Index
         $theirs_index.FileSystem = $this.FileSystem
         $theirs_index.Checkout($merge_head_oid)
 
-        # Compare Ours <==> Theirs --> Diff
-        $merge_diff = $this.Index.DiffIndex($theirs_index)
+        # Find common ancestor between the HEADs of the two branches
+        $ancestor_commit_oid = Get-CommonAncestor -CommitA $target_head_oid -CommitB $merge_head_oid
 
-        # ---------------------------------------------------------------------
-        # Merge Our-Changes <==> Their-Changes --> Merge-States
-        # ---------------------------------------------------------------------
-        $merge = [PSCustomObject]@{
-            # Files that have been modified within both branches.
-            FileConflict = New-Object System.Collections.ArrayList
-
-            # Files that have been modified by only one branch.
-            PassThru = $null
-
-            # Files deletions.
-            Remove   = New-Object System.Collections.ArrayList
-        }
-
-        # ----------------------UNCONTESTED ADDITIONS--------------------------
-        # Fast Forward all file additions between ours <==> theirs
-        $merge.PassThru = $merge_diff.Additions
-
-        # ------------------------MODIFIED CONFLICTS---------------------------
-        # Find ancestors for file version conflicts.
-        foreach ($item in $merge_diff.Changed)
+        # There is no ancestor commit from which to perform a three way merge
+        #  Complain to the user... or:
+        #  Consider all files with the same names in ours && theirs to be a conflict
+        #  ... or:
+        #  Fast Forward all conflicts to theirs || ours
+        if ($ancestor_commit_oid -eq $null -and !$FastForward)
         {
-            $path = $item.Ours.Path
-
-            if ($ancestor_index.PathCache.Contains($path))
-            {
-                $item.Ancestor = $ancestor_index.PathCache[$path]
-                $item.Ancestor.Merge = [VersionControl.Repository.Index.MergeState]::Ancestor
-            }
-            [void]$merge.FileConflict.Add($item)
+            throw (New-Object System.InvalidOperationException("There is no ancestor from which to perform a three way merge."))
         }
 
-        # 3-way merge of conflicting entries
-        $unresolved = New-Object System.Collections.ArrayList
-        foreach ($file_conflict in $merge.FileConflict)
+        # Ours -- is ancestor of --> Theirs
+        #  If their MERGE_HEAD commit is a direct decendent of HEAD; FastForward is possible
+        if ($ancestor_commit_oid -eq $this.Index.idx.HEAD)
         {
-            # Attempt to merge changes between the files using specified merge function
-            if ( (& $MergeScript $file_conflict) )
-            {
-                [void]$unresolved.Add($file_conflict)
-            }
+            $ff_merge_possible = $true
         }
 
-        # Add unresolved file level merge conflicts --> this.Index
-        foreach ($conflict in $unresolved)
+        if ($ff_merge_possible -and $FastForward)
         {
-            [void]$this.Index.Add($conflict.Ours)
-            [void]$this.Index.Add($conflict.Theirs)
-            if ($conflict.Ancestor -ne $null)
-            {
-                [void]$this.Index.Add($conflict.Ancestor)
-            }
+            Merge-FastForward -idxSource $theirs_index -idxTarget $this.Index
+            $this.LogMerge($target_head_oid, $merge_head_oid, $Source, [VersionControl.Repository.MergeStrategy]::FastForward)
         }
-
-        # ------------------------REMOVED CONFLICTS----------------------------
-        # File removal conflicts
-        if ($merge_diff.Removed.Count -gt 0)
+        elseif ($FastForward)
         {
-            $ancestor_diff = $ancestor_index.DiffIndex($this.Index)
-
-            foreach ($item in $merge_diff.Removed)
-            {
-                $path = $item.Ours.Path
-
-                # If the file was modified between ancestor <==> ours --> conflict
-                if ($ancestor_diff.PathCache[$path].CompareResult -eq [VersionControl.Repository.Index.CompareResult]::Modified)
-                {
-                    $item.Ancestor = $ancestor_diff.PathCache[$path].Ours
-                    $item.Ancestor.Merge = [VersionControl.Repository.Index.MergeState]::Ancestor
-                    $merge.Conflict.Add($item)
-                }
-
-                # If the file is equivalent between ancestor <==> ours --> PassThru - Remove
-                else
-                {
-                    [void]$merge.Remove.Add($item)
-                }
-            }
+            throw (New-Object System.InvalidOperationException("Fast forward merge is not possible."))
         }
-
-        # REUC - Resolve Undo Conflicts index extension
+        else
+        {
+            Merge-Recursive -idxSource $theirs_index -idxTarget $this.Index -oidAncestor $ancestor_commit_oid
+            $this.LogMerge($target_head_oid, $merge_head_oid, $Source, [VersionControl.Repository.MergeStrategy]::Recursive)
+        }
     }
 
     <#
@@ -1191,7 +1125,51 @@ function New-Repository {
           <prev_sha1> <new_sha1> <user_name> <email_addr> <utc_time> <utc_offset> merge <source_branch_name>: Merge made by the <strategy_type> strategy.
     #>
     Add-Member -InputObject $Repository -MemberType ScriptMethod -Name LogMerge -Value {
+        param(
+            [Parameter(Mandatory = $true)]
+            [String]
+                $oidTarget,
 
+            [Parameter(Mandatory = $true)]
+            [String]
+                $oidSource,
+
+            [Parameter(Mandatory = $true)]
+            [String]
+                $BranchName,
+
+            [Parameter(Mandatory = $true)]
+            [VersionControl.Repository.MergeStrategy]
+                $Strategy
+        )
+
+        # Resolve logging paths.
+        $head_path = $this.HEAD -replace "ref: refs\/heads\/", "" -replace "\/", "\"
+        $LogBranch = Join-Path (Join-Path $this.Repository logs\refs\heads) $head_path
+        $LogHead   = Join-Path $this.Repository logs\HEAD
+
+        if ($Strategy -eq [VersionControl.Repository.MergeStrategy]::FastForward)
+        {
+            $strategy_string = "fast-forward"
+        }
+
+        if ($Strategy -eq [VersionControl.Repository.MergeStrategy]::Recursive)
+        {
+            $strategy_string = "recursive"
+        }
+
+        $msg = "{0} {1} {2} <{3}> {4} {5} merge {6}: Merge made by the '{7}' strategy." -f `
+            $oidTarget,
+            $oidSource,
+            $this.User,
+            $this.Email,
+            [DateTime]::Now.ToFileTimeUtc(),
+            (Get-UtcOffset),
+            $BranchName,
+            $Strategy
+
+        $msg >> $LogBranch
+        $msg >> $LogHead
     }
 
     <#
@@ -1560,7 +1538,7 @@ function New-Tree {
     Used to build the ancestry of a commit that is required when searching for
     a common ancestor between two commits.
 #>
-function New-Ancestry {
+function Get-Ancestry {
     param(
         # Object ID (oid) of the commit for which we are building an ancestry table.
         [Parameter(Mandatory = $true)]
@@ -1588,7 +1566,7 @@ function New-Ancestry {
         }
 
         $Ancestors.Add($parent, $null)
-        New-Ancestry -Commit $parent -Ancestors $Ancestors -FileSystem $FileSystem
+        Get-Ancestry -Commit $parent -Ancestors $Ancestors -FileSystem $FileSystem
     }
 }
 
@@ -1619,7 +1597,7 @@ function Get-CommonAncestor {
     )
 
     # Parent ancestry for input commits.
-    $ancestry = New-Ancestry -Commit $CommitA -FileSystem $FileSystem
+    $ancestry = Get-Ancestry -Commit $CommitA -FileSystem $FileSystem
 
     # Parent ancestry for CommitB
     $common = Find-CommonAncestor -Commit $CommitB -FileSystem $FileSystem -Ancestors $ancestry
@@ -1669,7 +1647,7 @@ function Find-CommonAncestor {
             return $parent
         }
 
-        $common = New-Ancestry -Commit $parent -Ancestors $Ancestors -FileSystem $FileSystem
+        $common = Get-Ancestry -Commit $parent -Ancestors $Ancestors -FileSystem $FileSystem
 
         # Common ancestor found on this branch
         if ($common -ne $null)
@@ -1680,6 +1658,158 @@ function Find-CommonAncestor {
 
     # No common ancestor was found for this branch
     return $null
+}
+
+<#
+.SYNOPSIS
+    Performs a quick merge of two branches.
+
+.DESCRIPTION
+    Used to update the target branch to the same state as the source branch.
+#>
+function Merge-FastForward {
+    param(
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]
+            $idxSource,
+
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]
+            $idxTarget
+    )
+
+    $idxTarget.idx.HEAD = $idxSource.idx.HEAD
+
+    # Normalize the index states - no file level merge is performed.
+    #  Staged changes for existing files that have not been committed within the target
+    #  branch will be lost; overwritten by matching files from the source merge HEAD.
+    #
+    #  Staged changes for new files in the target branch will be unaffected.
+    foreach ($file in $idxSource.PathCache.GetEnumerator())
+    {
+        # Update the index's file object; skip tree validation
+        [void]$idxTarget.Add( $file.Value, $false, $false )
+    }
+
+    $idxTarget.Write()
+
+    # Force checkout merged directory contents
+    $idxTarget.Checkout($idxTarget.idx.HEAD)
+}
+
+<#
+.SYNOPSIS
+    Performs a recursive merge of two branches.
+
+.DESCRIPTION
+    Used to perform a 3-way recursive merge for two branches using a common
+    ancestor to compare changes.
+#>
+function Merge-Recursive {
+    param(
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]
+            $idxSource,
+
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]
+            $idxTarget,
+
+        [Parameter(Mandatory = $true)]
+        [String]
+            $oidAncestor
+    )
+
+    # ----------------------START RECURSIVE MERGE--------------------------
+    # Checkout the ancestor commit as index --> ancestor
+    $idxAncestor = New-Index
+    $idxAncestor.FileSystem = $idxTarget.FileSystem
+    $idxAncestor.Checkout($oidAncestor)
+
+    # Compare Ours <==> Theirs --> Diff
+    $merge_diff = $idxTarget.Diff($idxSource)
+
+    # ---------------------------------------------------------------------
+    # Merge Our-Changes <==> Their-Changes --> Merge-States
+    # ---------------------------------------------------------------------
+    $merge = [PSCustomObject]@{
+        # Files that have been modified within both branches.
+        FileConflict = New-Object System.Collections.ArrayList
+
+        # Files that have been modified by only one branch.
+        PassThru = $null
+
+        # Files deletions.
+        Remove   = New-Object System.Collections.ArrayList
+    }
+
+    # ----------------------UNCONTESTED ADDITIONS--------------------------
+    # Fast Forward all file additions between ours <==> theirs
+    $merge.PassThru = $merge_diff.Additions
+
+    # ------------------------MODIFIED CONFLICTS---------------------------
+    # Find ancestors for file version conflicts.
+    foreach ($item in $merge_diff.Changed)
+    {
+        $path = $item.Ours.Path
+
+        if ($idxAncestor.PathCache.Contains($path))
+        {
+            $item.Ancestor = $idxAncestor.PathCache[$path]
+            $item.Ancestor.Merge = [VersionControl.Repository.Index.MergeState]::Ancestor
+        }
+        [void]$merge.FileConflict.Add($item)
+    }
+
+    # 3-way merge of conflicting entries
+    $unresolved = New-Object System.Collections.ArrayList
+    foreach ($file_conflict in $merge.FileConflict)
+    {
+        # Attempt to merge changes between the files using specified merge function
+        if ( (& $MergeScript $file_conflict) )
+        {
+            [void]$unresolved.Add($file_conflict)
+        }
+    }
+
+    # Add unresolved file level merge conflicts --> this.Index
+    foreach ($conflict in $unresolved)
+    {
+        [void]$this.Index.Add($conflict.Ours)
+        [void]$this.Index.Add($conflict.Theirs)
+        if ($conflict.Ancestor -ne $null)
+        {
+            [void]$this.Index.Add($conflict.Ancestor)
+        }
+    }
+
+    # ------------------------REMOVED CONFLICTS----------------------------
+    # File removal conflicts
+    if ($merge_diff.Removed.Count -gt 0)
+    {
+        $ancestor_diff = $idxAncestor.Diff($this.Index)
+
+        foreach ($item in $merge_diff.Removed)
+        {
+            $path = $item.Ours.Path
+
+            # If the file was modified between ancestor <==> ours --> conflict
+            if ($ancestor_diff.PathCache[$path].CompareResult -eq [VersionControl.Repository.Index.CompareResult]::Modified)
+            {
+                $item.Ancestor = $ancestor_diff.PathCache[$path].Ours
+                $item.Ancestor.Merge = [VersionControl.Repository.Index.MergeState]::Ancestor
+                $merge.Conflict.Add($item)
+            }
+
+            # If the file is equivalent between ancestor <==> ours --> PassThru - Remove
+            else
+            {
+                [void]$merge.Remove.Add($item)
+            }
+        }
+    }
+
+    # REUC - Resolve Undo Conflicts index extension
 }
 
 # Logging Support -------------------------------------------------------------

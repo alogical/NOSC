@@ -332,7 +332,7 @@ function New-Index {
         Used to identify differences between (additional files, and different versions
         of already tracked files) this index and a target index.
     #>
-    Add-Member -InputObject $Index -MemberType ScriptMethod -Name DiffIndex -Value {
+    Add-Member -InputObject $Index -MemberType ScriptMethod -Name Diff -Value {
         param(
             # The index to be compared against this index.
             [Parameter(Mandatory = $true)]
