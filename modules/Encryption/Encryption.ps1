@@ -2,6 +2,13 @@
 $OID_CLIENT_AUTHENTICATION = "1.3.6.1.5.5.7.3.2"
 $OID_EMAIL_SIGNATURE       = "1.3.6.1.5.5.7.3.4"
 
+# CRYPT touch tone key mapping
+$CRYPT_FILE_MARK = [System.BitConverter]::GetBytes( [Int32](27978) )
+if ([System.BitConverter]::IsLittleEndian)
+{
+    [System.Array]::Reverse($CRYPT_FILE_MARK)
+}
+
 ###############################################################################
 # Encryption Utilities
 ###############################################################################
@@ -99,11 +106,6 @@ function Encrypt-File {
         [void]$files.Add( (Get-Item -LiteralPath $p) )
     }
 
-    # Certificate Data
-    #$certificate = Get-CertificateByOid -OID $OID_SMARTCARD_LOGON
-    $encode_certificate_thumb  = [System.Text.ASCIIEncoding]::ASCII.GetBytes($certificate.Thumbprint)
-    $nbytes_certificate_thumb = [System.BitConverter]::GetBytes($encode_certificate_thumb.Length)
-
     # Get New AES Encryptor
     $crypto_provider  = New-AesProvider -keysize 256 -blocksize 128
     $nbytes_crypto_iv = [System.BitConverter]::GetBytes($crypto_provider.IV.Length)
@@ -111,17 +113,6 @@ function Encrypt-File {
     # RSA encrypt crypto key
     $encode_ct_key = Get-KeyExchange -crypto $crypto_provider -cert $certificate
     $nbytes_ct_key = [System.BitConverter]::GetBytes($encode_ct_key.Length)
-
-    # Get encrypted key thumbprint
-    $hash_provider = New-Object System.Security.Cryptography.SHA256CryptoServiceProvider
-    $encode_key_thumb = $hash_provider.ComputeHash($encode_ct_key)
-    $nbytes_key_thumb = [System.BitConverter]::GetBytes($encode_key_thumb.Length)
-
-    # Get crypto provider information
-    $encode_provider_name   = [System.Text.ASCIIEncoding]::ASCII.GetBytes($crypto_provider.GetType().Name)
-    $nbytes_provider_name   = [System.BitConverter]::GetBytes($encode_provider_name.Length)
-    $encode_key_size        = [System.BitConverter]::GetBytes($crypto_provider.KeySize)
-    $encode_block_size      = [System.BitConverter]::GetBytes($crypto_provider.BlockSize)
 
     # Write Encrypted File
     $encryptor = $crypto_provider.CreateEncryptor()
@@ -470,6 +461,131 @@ function New-AesProvider {
     $aes.Mode = $mode
 
     return $aes
+}
+
+<#
+.SYNOPSIS
+    Encodes binary file header containing information about decrypting the file.
+
+.OUTPUT
+    [Byte[]]
+#>
+function New-Header {
+    [CmdletBinding()]
+    param(
+        # Cryptographic certificate used to create the symmetric key exchange.
+        [Parameter(Mandatory = $true)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+            $certificate,
+
+        # Cryptographic symmetric algorithm provider from the .NET library.
+        [Parameter(Mandatory = $true)]
+        [System.Security.Cryptography.SymmetricAlgorithm]
+            $provider,
+
+        [Parameter(Mandatory = $false)]
+        [ValidateSet(1)]
+            [Int32]
+            $version = 1
+    )
+
+    switch ($version)
+    {
+        1
+        {
+            return (f_nh_v1 $certificate $provider)
+        }
+
+        default
+        {
+            throw (New-Object System.ApplicationException("Version value invalid."))
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+    Decodes binary file header containing information about decrypting the file.
+
+.OUTPUT
+    [PSCustomObject]
+#>
+function Read-Header {
+    [CmdletBinding(DefaultParameterSetName = "v1")]
+    param(
+        # Binary file stream for reading.
+        [Parameter(Mandatory = $true)]
+        [System.IO.BinaryReader]
+            $stream
+    )
+    $version = Decode-Int32S -stream $stream
+
+    if ($version -eq 1)
+    {
+        return (f_rh_v1 $stream)
+    }
+}
+
+<#
+.SYNOPSIS
+    Encodes version 1 binary file header.
+
+.OUTPUT
+    [Byte[]]
+#>
+function f_nh_v1 {
+    param(
+        # Cryptographic certificate used to create the symmetric key exchange.
+        [Parameter(Mandatory = $true)]
+        [System.Security.Cryptography.X509Certificates.X509Certificate2]
+            $certificate,
+
+        # Cryptographic symmetric algorithm provider from the .NET library.
+        [Parameter(Mandatory = $true)]
+        [System.Security.Cryptography.SymmetricAlgorithm]
+            $provider
+    )
+
+    # Certificate Data
+    #$certificate = Get-CertificateByOid -OID $OID_SMARTCARD_LOGON
+    $encode_certificate_thumb = [System.Text.ASCIIEncoding]::ASCII.GetBytes($CertificateThumb)
+    $nbytes_certificate_thumb = [System.BitConverter]::GetBytes($CertificateThumb.Length)
+
+    # Get encrypted key thumbprint
+    $hash_provider = New-Object System.Security.Cryptography.SHA256CryptoServiceProvider
+    $encode_key_thumb = $hash_provider.ComputeHash($encode_ct_key)
+    $nbytes_key_thumb = [System.BitConverter]::GetBytes($encode_key_thumb.Length)
+
+    # Get crypto provider information
+    $encode_provider_name   = [System.Text.ASCIIEncoding]::ASCII.GetBytes($crypto_provider.GetType().Name)
+    $nbytes_provider_name   = [System.BitConverter]::GetBytes($encode_provider_name.Length)
+    $encode_key_size        = [System.BitConverter]::GetBytes($crypto_provider.KeySize)
+    $encode_block_size      = [System.BitConverter]::GetBytes($crypto_provider.BlockSize)
+}
+
+<#
+.SYNOPSIS
+    Decodes version 1 binary file header.
+
+.OUTPUT
+    [PSCustomObject]
+#>
+function f_rh_v1 {
+    param(
+        # Binary file stream for reading.
+        [Parameter(Mandatory = $true)]
+        [System.IO.BinaryReader]
+            $Stream
+    )
+
+    $buffer = New-Object Byte[] 512
+    $header = [PSCustomObject]@{
+        CertificateThumb = [String]::Empty
+        ProviderName     = [String]::Empty
+        KeySize          = [Int32]0
+        BlockSize        = [Int32]0
+        KeyThumb         = [String]::Empty
+    }
 }
 
 ###############################################################################
