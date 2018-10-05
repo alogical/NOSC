@@ -3,11 +3,7 @@ $OID_CLIENT_AUTHENTICATION = "1.3.6.1.5.5.7.3.2"
 $OID_EMAIL_SIGNATURE       = "1.3.6.1.5.5.7.3.4"
 
 # CRYPT touch tone key mapping
-$CRYPT_FILE_MARK = [System.BitConverter]::GetBytes( [Int32](27978) )
-if ([System.BitConverter]::IsLittleEndian)
-{
-    [System.Array]::Reverse($CRYPT_FILE_MARK)
-}
+$PREAMBLE = [Int32](27978)
 
 ###############################################################################
 # Encryption Utilities
@@ -108,11 +104,15 @@ function Encrypt-File {
 
     # Get New AES Encryptor
     $crypto_provider  = New-AesProvider -keysize 256 -blocksize 128
-    $nbytes_crypto_iv = [System.BitConverter]::GetBytes($crypto_provider.IV.Length)
 
     # RSA encrypt crypto key
     $encode_ct_key = Get-KeyExchange -crypto $crypto_provider -cert $certificate
-    $nbytes_ct_key = [System.BitConverter]::GetBytes($encode_ct_key.Length)
+
+    # Generate crypto file header
+    $encode_header = New-Header -certificate $certificate     `
+                                -provider    $crypto_provider `
+                                -ctKey       $encode_ct_key   `
+                                -version 1
 
     # Write Encrypted File
     $encryptor = $crypto_provider.CreateEncryptor()
@@ -121,30 +121,10 @@ function Encrypt-File {
     foreach($f in $files){
         $filepath_out = Join-Path (Split-Path $f.FullName -Parent) ((Split-Path $f.FullName -Leaf) + ".crypt" )
         $fstream_in   = [System.IO.BinaryReader]::new( $f.OpenRead() )
-        #[System.IO.FileStream]$fstream_in  = $f.OpenRead()
-
         $fstream_out  = [System.IO.BinaryWriter]::new( [System.IO.File]::Open($filepath_out, [System.IO.FileMode]::Create))
-        #[System.IO.FileStream]$fstream_out = New-Object System.IO.FileStream($filepath_out, [System.IO.FileMode]::Create)
 
-        # Write PKI Certificate Info Used for Key Encryption
-        $fstream_out.Write( $nbytes_certificate_thumb, 0, 4 )
-        $fstream_out.Write( $encode_certificate_thumb, 0, $encode_certificate_thumb.Length )
-
-        # Write Encrypted AES Key Data to File
-        $fstream_out.Write( $nbytes_key_thumb, 0, 4)
-        $fstream_out.Write( $encode_key_thumb, 0, $encode_key_thumb.Length)
-
-        $fstream_out.Write( $nbytes_provider_name, 0, 4)
-        $fstream_out.Write( $encode_provider_name, 0, $encode_provider_name.Length)
-
-        $fstream_out.Write( $encode_key_size, 0, 4)
-        $fstream_out.Write( $encode_block_size, 0, 4)
-
-        $fstream_out.Write( $nbytes_crypto_iv, 0, 4 )
-        $fstream_out.Write( $crypto_provider.IV, 0, $crypto_provider.IV.Length )
-
-        $fstream_out.Write( $nbytes_ct_key, 0, 4 )
-        $fstream_out.Write( $encode_ct_key, 0, $encode_ct_key.Length )
+        # Write Encryption Header
+        $fstream_out.Write( $encode_header, 0, $encode_header.Length )
 
         # Start Encrypt
         [int]$count = 0
@@ -189,50 +169,26 @@ function Decrypt-File {
 
     $certificates = @{}
     $decryptors   = @{}
-    [string]$certificateThumb = [string]::Empty
-    [string]$keyThumb         = [string]::Empty
-    [byte[]]$buffer = New-Object byte[] 512         # large enough to contain an encrypted 256 AES Key
+    [string]$keyThumb = [string]::Empty
+    [byte[]]$buffer   = New-Object byte[] 512         # large enough to contain an encrypted 256 AES Key
     [int]$count  = 0
     [int]$nbytes = 0
     [int]$cursor = 0
     foreach($f in $files){
-        [System.IO.FileStream]$fstream_in = $f.OpenRead()
+        [System.IO.FileStream]$fstream_in = [System.IO.BinaryReader]::new( $f.OpenRead() )
 
-        # Read Certificate Used for Encryption
-        $count, $cursor = Decode-Blob $fstream_in $buffer
-        $certificateThumb = ([System.Text.ASCIIEncoding]::ASCII.GetChars($buffer, 0, $count) -join '')
-
-        $buffer.Clear()
-
-        # Read Key Thumbprint
-        $count, $cursor = Decode-Blob $fstream_in $buffer
-        $keyThumb = [System.Text.ASCIIEncoding]::ASCII.GetChars($buffer, 0, $count) -join ''
-
-        $buffer.Clear()
-
-        # Read Key Initialization Vector
-        $count, $cursor = Decode-Blob $fstream_in $buffer
-        [byte[]]$keyIV = New-Object byte[] $count
-        [System.Array]::Copy($buffer, $keyIV, $count)
-
-        $buffer.Clear()
-
-        # Read Encrypted Key Blob
-        $count, $cursor = Decode-Blob $fstream_in $buffer
-        [byte[]]$ctKeyblob = New-Object byte[] $count
-        [System.Array]::Copy($buffer, $ctKeyblob, $count)
-
-        $buffer.Clear()
+        # Read Crypto File Header
+        $header = Read-Header -stream $fstream_in
 
         # Retrieve the Certificate for Decrypting the Key
-        if ($certificates.ContainsKey($certificateThumb))
+        if ($certificates.ContainsKey($header.CertificateThumb))
         {
-            $cert = $certificates[$certificateThumb]
+            $cert = $certificates[$header.CertificateThumb]
         }
         else
         {
-            $cert = Retrieve-Certificate -Thumbprint $certificateThumb
-            $certificates.Add($certificateThumb, $cert)
+            $cert = Retrieve-Certificate -Thumbprint $header.CertificateThumb
+            $certificates.Add($header.CertificateThumb, $cert)
         }
 
         # Decrypt AES Key
@@ -242,10 +198,10 @@ function Decrypt-File {
         }
         else
         {
-            $ptKeyblob = Decrypt-RSA -blob $ctKeyblob -cert $cert -OAEP $false
+            $ptKeyblob = Decrypt-RSA -blob $header.ctKey -cert $cert -OAEP $false
 
             $aes = New-AesProvider 256 128
-            $decryptor = $aes.CreateDecryptor($ptKeyblob, $keyIV)
+            $decryptor = $aes.CreateDecryptor($ptKeyblob, $header.IV)
 
             # Zeroize plain text key blob
             for ($i = 0; $i -lt $ptKeyblob.Length; $i++)
@@ -483,6 +439,11 @@ function New-Header {
         [System.Security.Cryptography.SymmetricAlgorithm]
             $provider,
 
+        # Encrypted symmetric crypto key.
+        [Parameter(Mandatory = $true)]
+        [Byte[]]
+            $ctKey,
+
         [Parameter(Mandatory = $false)]
         [ValidateSet(1)]
             [Int32]
@@ -493,7 +454,7 @@ function New-Header {
     {
         1
         {
-            return (f_nh_v1 $certificate $provider)
+            return (f_encode_header_v1 $certificate $provider $ctKey)
         }
 
         default
@@ -511,19 +472,35 @@ function New-Header {
     [PSCustomObject]
 #>
 function Read-Header {
-    [CmdletBinding(DefaultParameterSetName = "v1")]
+    [CmdletBinding()]
     param(
         # Binary file stream for reading.
         [Parameter(Mandatory = $true)]
         [System.IO.BinaryReader]
             $stream
     )
-    $version = Decode-Int32S -stream $stream
+    $version = f_decode_preamble -Stream $stream
 
     if ($version -eq 1)
     {
-        return (f_rh_v1 $stream)
+        return (f_decode_header_v1 -Stream $stream)
     }
+}
+
+function f_decode_preamble {
+    param(
+        # Binary file stream for reading.
+        [Parameter(Mandatory = $true)]
+        [System.IO.BinaryReader]
+            $Stream
+    )
+
+    if ((Decode-Int32S -stream $Stream) -ne $PREAMBLE)
+    {
+        throw (New-Object System.FormatException("Invalid file preamble."))
+    }
+
+    return (Decode-Int32S -stream $Stream)
 }
 
 <#
@@ -533,7 +510,7 @@ function Read-Header {
 .OUTPUT
     [Byte[]]
 #>
-function f_nh_v1 {
+function f_encode_header_v1 {
     param(
         # Cryptographic certificate used to create the symmetric key exchange.
         [Parameter(Mandatory = $true)]
@@ -543,24 +520,73 @@ function f_nh_v1 {
         # Cryptographic symmetric algorithm provider from the .NET library.
         [Parameter(Mandatory = $true)]
         [System.Security.Cryptography.SymmetricAlgorithm]
-            $provider
+            $provider,
+
+        # Key exchange cipher text blob.
+        [Parameter(Mandatory = $true)]
+        [Byte[]]
+            $ctkey
     )
 
-    # Certificate Data
-    #$certificate = Get-CertificateByOid -OID $OID_SMARTCARD_LOGON
-    $encode_certificate_thumb = [System.Text.ASCIIEncoding]::ASCII.GetBytes($CertificateThumb)
-    $nbytes_certificate_thumb = [System.BitConverter]::GetBytes($CertificateThumb.Length)
+    <#
+     # 4 bytes:   [Int32]  header mark
+     # 4 bytes:   [Int32]  version
+     # 4 bytes:   [Int32]  certificate thumb blob length
+     # n bytes:   [String] certificate thumb blob
+     # 4 bytes:   [Int32]  provider name blob length
+     # n bytes:   [String] provider name blob
+     # 4 bytes:   [Int32]  key size
+     # 4 bytes:   [Int32]  block size
+     # 4 bytes:   [Int32]  initialization vector blob length
+     # n bytes:   [Byte[]] initialization vector blob
+     # 256 bytes: [Byte[]] ctkey SHA256 thumb
+     # 4 bytes:   [Int32]  ctkey exchange blob length
+     # n bytes:   [Byte[]] ctkey exchange blob
+     #
+     # total bytes: 32 bytes + 256 SHA + blob lengths
+     #>
 
-    # Get encrypted key thumbprint
-    $hash_provider = New-Object System.Security.Cryptography.SHA256CryptoServiceProvider
-    $encode_key_thumb = $hash_provider.ComputeHash($encode_ct_key)
-    $nbytes_key_thumb = [System.BitConverter]::GetBytes($encode_key_thumb.Length)
+    $sha           = New-Object System.Security.Cryptography.SHA256CryptoServiceProvider
+    $ctkey_thumb   = $sha.ComputeHash($ctkey)
+    $provider_name = $provider.GetType().Name
 
-    # Get crypto provider information
-    $encode_provider_name   = [System.Text.ASCIIEncoding]::ASCII.GetBytes($crypto_provider.GetType().Name)
-    $nbytes_provider_name   = [System.BitConverter]::GetBytes($encode_provider_name.Length)
-    $encode_key_size        = [System.BitConverter]::GetBytes($crypto_provider.KeySize)
-    $encode_block_size      = [System.BitConverter]::GetBytes($crypto_provider.BlockSize)
+    # Create header byte array
+    $nbytes  = 288
+    $nbytes += $certificate.Thumbprint.Length
+    $nbytes += $provider_name.Length
+    $nbytes += $provider.IV.Length
+    $nbytes += $ctkey.Length
+
+    $header = New-Object Byte[] $nbytes
+
+    # Populate header
+    $index  = 0
+
+    # Preamble
+    $index += Encode-Int32B -data $PREAMBLE -buffer $header -index $index
+    $index += Encode-Int32B -data 1 -buffer $header -index $index
+
+    # Simple Types
+    $index += Encode-AsciiB -data $certificate.Thumbprint -buffer $header -index $index
+    $index += Encode-AsciiB -data $provider_name -buffer $header -index $index
+    $index += Encode-Int32B -data $provider.KeySize -buffer $header -index $index
+    $index += Encode-Int32B -data $provider.BlockSize -buffer $header -index $index
+
+    # IV Byte Array
+    $index += Encode-Int32B -data $provider.IV.Length -buffer $header -index $index
+    [System.Array]::Copy($provider.IV, 0, $header, $index, $provider.IV.Length)
+        $index += $provider.IV.Length
+
+    # ctKey SHA256 thumb
+    [System.Array]::Copy($ctkey_thumb, 0, $header, $index, 256)
+        $index += 256
+
+    # ctKey Byte Array
+    $index += Encode-Int32B -data $ctkey.Length -buffer $header -index $index
+    [System.Array]::Copy($ctkey, 0, $header, $index, $ctkey.Length)
+        $index += $ctkey.Length
+
+    return $header
 }
 
 <#
@@ -570,7 +596,7 @@ function f_nh_v1 {
 .OUTPUT
     [PSCustomObject]
 #>
-function f_rh_v1 {
+function f_decode_header_v1 {
     param(
         # Binary file stream for reading.
         [Parameter(Mandatory = $true)]
@@ -578,14 +604,37 @@ function f_rh_v1 {
             $Stream
     )
 
-    $buffer = New-Object Byte[] 512
+    <#
+    ## Handled by f_decode_preamble
+     # 4 bytes: [Int32]  header mark
+     # 4 bytes: [Int32]  version
+     #
+    ## Version 1 Header
+     # 4 bytes: [Int32]  certificate thumb blob length
+     # n bytes: [String] certificate thumb blob
+     # 4 bytes: [Int32]  provider name blob length
+     # n bytes: [String] provider name blob
+     # 4 bytes: [Int32]  key size
+     # 4 bytes: [Int32]  block size
+     # 4 bytes: [Int32]  initialization vector blob length
+     # n bytes: [Byte[]] initialization vector blob
+     # 4 bytes: [Int32]  key exchange blob length
+     # n bytes: [Byte[]] key exchange blob
+     #
+     # total bytes: 24 bytes + blob lengths
+     #>
+
     $header = [PSCustomObject]@{
-        CertificateThumb = [String]::Empty
-        ProviderName     = [String]::Empty
-        KeySize          = [Int32]0
-        BlockSize        = [Int32]0
-        KeyThumb         = [String]::Empty
+        Version          = 1
+        CertificateThumb = Decode-AsciiS -stream $Stream
+        ProviderName     = Decode-AsciiS -stream $Stream
+        KeySize          = Decode-Int32S -stream $Stream
+        BlockSize        = Decode-Int32S -stream $Stream
+        IV               = Decode-BlobS -stream $Stream
+        ctKey            = Decode-BlobS -stream $Stream
     }
+
+    return $header
 }
 
 ###############################################################################
@@ -985,7 +1034,7 @@ function Write-BlobS {
     [int]$nbytes = 0
 
     # Write length of the blob.
-    Encode-Int32 -data $blob.Length -stream $stream
+    Encode-Int32S -data $blob.Length -stream $stream
 
     # Write the blob data.
     $stream.Write($blob, 0, $blob.Length)
@@ -1032,6 +1081,74 @@ function Read-BlobS {
 
     # count of bytes written to byte[] buffer
     return $count
+}
+
+<#
+.SYNOPSIS
+    Write an binary data blob within binary data stream.
+
+.OUTPUT
+    [Int32]
+        Count - number of bytes written to the binary data stream.
+#>
+function Encode-BlobS {
+    param(
+        # Data stream for reading a file.
+        [System.IO.BinaryWriter]
+            $stream,
+
+        # Data blob.
+        [byte[]]
+            $blob
+    )
+    [int]$count  = 0
+    [int]$nbytes = 0
+
+    # Write length of the blob.
+    Encode-Int32S -data $blob.Length -stream $stream
+
+    # Write the blob data.
+    $stream.Write($blob, 0, $blob.Length)
+
+    #Count of bytes written to stream.
+    return ($blob.Length + 4)
+}
+
+<#
+.SYNOPSIS
+    Read an binary data blob from a binary data stream.
+
+.NOTE
+    Data blob is copied into the [byte[]] buffer, and length of the
+    blob is stored in the returned count integer.
+
+.OUTPUT
+    [Byte[]]
+        Byte array of the data blob read from the stream.
+#>
+function Decode-BlobS {
+    param(
+        # Data stream for reading a file.
+        [System.IO.BinaryReader]
+            $stream
+    )
+    [int]$count  = 0
+    [int]$nbytes = 0
+
+    # Buffer for reading an Int32 blob length preamble.
+    $nbytes = Decode-Int32S -stream $stream
+    $buffer = New-Object Byte[] $nbytes
+
+    # Will throw an error if the blob is larger than the buffer.
+    $count = $stream.Read($buffer, 0, $nbytes)
+
+    # Thow error if stream ended before the entire blob was read.
+    if($count -ne $nbytes){
+        throw (New-Object System.FormatException)
+    }
+
+    # byte[] buffer
+    return $buffer
 }
 
 <#
