@@ -1,6 +1,14 @@
-﻿$OID_SMARTCARD_LOGON       = "1.3.6.1.4.1.311.20.2.2"
-$OID_CLIENT_AUTHENTICATION = "1.3.6.1.5.5.7.3.2"
-$OID_EMAIL_SIGNATURE       = "1.3.6.1.5.5.7.3.4"
+﻿$OID_CERTIFICATE_SMARTCARD_LOGON        = "1.3.6.1.4.1.311.20.2.2"
+$OID_CERTIFICATE_CLIENT_AUTHENTICATION  = "1.3.6.1.5.5.7.3.2"
+$OID_CERTIFICATE_EMAIL_SIGNATURE        = "1.3.6.1.5.5.7.3.4"
+
+$OID_CONTENT_TYPE_DATA                  = '1.2.840.113549.1.7.1'
+$OID_CONTENT_TYPE_DIGESTED_DATA         = '1.2.840.113549.1.7.5'
+$OID_CONTENT_TYPE_ENCRYPTED_DATA        = '1.2.840.113549.1.7.6'
+$OID_CONTENT_TYPE_ENVELOPED_DATA        = '1.2.840.113549.1.7.3'
+$OID_CONTENT_TYPE_HASHED_DATA           = '1.2.840.113549.1.7.5'
+$OID_CONTENT_TYPE_SIGNED_ENVELOPED_DATA = '1.2.840.113549.1.7.4'
+$OID_CONTENT_TYPE_SIGNED_DATA           = '1.2.840.113549.1.7.2'
 
 # CRYPT touch tone key mapping
 $PREAMBLE = [Int32](27978)
@@ -31,7 +39,7 @@ function Encrypt-X509Cms {
             $Certificate
     )
 
-    $content_info = New-Object System.Security.Cryptography.Pkcs.ContentInfo @($null,$Bytes)
+    $content_info = New-Object System.Security.Cryptography.Pkcs.ContentInfo @($OID_CONTENT_TYPE_DATA,$Bytes)
     $envelop      = New-Object System.Security.Cryptography.Pkcs.EnvelopedCms $content_info
     $recipient    = New-Object System.Security.Cryptography.Pkcs.CmsRecipient $Certificate
 
@@ -69,8 +77,9 @@ function Decrypt-X509Cms {
 
     $envelop = New-Object System.Security.Cryptography.Pkcs.EnvelopedCms
     $envelop.Decode($Bytes)
-    $collection = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2Collection $Certificate
-    $envelop.Decrypt($collection)
+
+    $recipients = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2Collection $Certificate
+    $envelop.Decrypt($recipients)
 
     return $envelop.ContentInfo.Content
 }
@@ -317,7 +326,6 @@ function Sign-Message {
 ###############################################################################
 # Encryption Basic Support Utilities
 ###############################################################################
-
 <#
 .SYNOPSIS
     Generates an encrypted key exchange for an symmetric encryption algorithm.
@@ -419,6 +427,9 @@ function New-AesProvider {
     return $aes
 }
 
+###############################################################################
+# File Format Support Utilities
+###############################################################################
 <#
 .SYNOPSIS
     Encodes binary file header containing information about decrypting the file.
