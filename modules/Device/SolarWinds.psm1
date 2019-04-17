@@ -1,3 +1,4 @@
+Add-Type -AssemblyName System.ServiceModel
 ###############################################################################
 ###############################################################################
 ## SECTION 01 ## PUBILC FUNCTIONS AND VARIABLES
@@ -8,17 +9,17 @@
 ###############################################################################
 ###############################################################################
 function Get-Nodes () {
-    if ($swis_connection -eq $null)
+    if ($Script:SWIS_CONNECTION -eq $null)
     {
         Write-Error "SolarWinds Information Service connection not initialized."
         return
     }
 
-    $nodes = Get-SwisData -Query $QRY_NODE_INFO_BASE -SwisConnection $swis_connection
+    $nodes = Get-SwisData -Query $QRY_NODE_INFO_BASE -SwisConnection $Script:SWIS_CONNECTION
     foreach ($n in $nodes)
     {
-        $custom_properties = Get-SwisData -Query ($DQRY_NODE_INFO_CUSTOM -f $n.NodeID) -SwisConnection $swis_connection
-        $node_settings = Get-SwisData -Query ($DQRY_NODE_SETTINGS -f $n.NodeID) -SwisConnection $swis_connection
+        $custom_properties = Get-SwisData -Query ($Script:DQRY_NODE_INFO_CUSTOM -f $n.NodeID) -SwisConnection $Script:SWIS_CONNECTION
+        $node_settings = Get-SwisData -Query ($DQRY_NODE_SETTINGS -f $n.NodeID) -SwisConnection $Script:SWIS_CONNECTION
         foreach ($setting in $node_settings)
         {
             if ($setting.SettingName -match 'SSH')
@@ -58,9 +59,9 @@ function Get-Nodes () {
             }
         }
 
-        for ($i = 0; $i -lt $CUSTOM_PROPLIST.Count; $i++)
+        for ($i = 0; $i -lt $Script:CUSTOM_PROPLIST.Count; $i++)
         {
-            $node.($CUSTOM_PROPLIST[$i]) = $custom_properties.($CUSTOM_PROPLIST[$i])
+            $node.($Script:CUSTOM_PROPLIST[$i]) = $custom_properties.($Script:CUSTOM_PROPLIST[$i])
         }
 
         Write-Output ([PSCustomObject]$node)
@@ -68,15 +69,30 @@ function Get-Nodes () {
 }
 
 function Open-SwisConnection {
+    [CmdletBinding()]
     Param (
         [Parameter(Mandatory = $true)]
         [String]
-            $ServerName
+            $ServerName,
+
+        [Parameter(Mandatory = $false)]
+        [PSCredential]
+            $Credential
     )
 
-    $swis_connection = Connect-Swis -Hostname $ServerName -Trusted
-    if ($swis_connection -ne $null)
+    if ($Credential -ne $null)
     {
+        $Script:SWIS_CONNECTION = Connect-Swis -Hostname $ServerName -Credential $Credential
+    }
+    else
+    {
+        $Script:SWIS_CONNECTION = Connect-Swis -Hostname $ServerName -Trusted
+    }
+
+    if ($Script:SWIS_CONNECTION -ne $null)
+    {
+        $Script:CUSTOM_PROPLIST = Get-SwisData -Query $QRY_CUSTOM_PROPLIST -SwisConnection $Script:SWIS_CONNECTION
+        $Script:DQRY_NODE_INFO_CUSTOM = Set-NodeCustomPropertiesQuery
         return $true
     }
     else
@@ -85,8 +101,28 @@ function Open-SwisConnection {
     }
 }
 
+function Test-SwisConnection {
+    if ($Script:SWIS_CONNECTION.ChannelFactory.State -eq [System.ServiceModel.CommunicationState]::Opened)
+    {
+        return $true
+    }
+    return $false
+}
+
 function Close-SwisConnection () {
-    Close-SwisConnection $swis_connection
+    try
+    {
+        $Script:SWIS_CONNECTION.Close()
+        $Script:SWIS_CONNECTION.Dispose()
+    }
+    catch
+    {
+        Write-Error $_.Exception
+    }
+    finally
+    {
+        # Nothing else to do.
+    }
 }
 
 Export-ModuleMember -Function *
@@ -100,19 +136,22 @@ Export-ModuleMember -Function *
 ###############################################################################
 ###############################################################################
 Import-Module SwisPowerShell
+$Script:SWIS_CONNECTION = $null
+$Script:CUSTOM_PROPLIST = $null
+$Script:DQRY_NODE_INFO_CUSTOM = $null
 
 function Set-NodeCustomPropertiesQuery () {
     $qry_builder = New-Object System.Text.StringBuilder
     [void]$qry_builder.Append('SELECT ')
-    for ($i = 0; $i -lt $CUSTOM_PROPLIST.Count; $i++)
+    for ($i = 0; $i -lt $Script:CUSTOM_PROPLIST.Count; $i++)
     {
         if ($i -eq 0)
         {
-            [void]$qry_builder.Append( ("{0}" -f $CUSTOM_PROPLIST[$i]) )
+            [void]$qry_builder.Append( ("{0}" -f $Script:CUSTOM_PROPLIST[$i]) )
         }
         else
         {
-            [void]$qry_builder.Append( (", {0}" -f $CUSTOM_PROPLIST[$i]) )
+            [void]$qry_builder.Append( (", {0}" -f $Script:CUSTOM_PROPLIST[$i]) )
         }
     }
     [void]$qry_builder.Append(' FROM Orion.NodesCustomProperties WHERE NodeID = {0};')
@@ -134,9 +173,6 @@ WHERE EntityName = 'Orion.NodesCustomProperties'
     AND Name != 'NodeID'
     AND Name != 'InstanceType'
 "@
-
-$CUSTOM_PROPLIST = Get-SwisData -Query $QRY_CUSTOM_PROPLIST -SwisConnection $swis_connection
-$DQRY_NODE_INFO_CUSTOM = Set-NodeCustomPropertiesQuery
 
 $DQRY_NODE_SETTINGS = @"
 SELECT SettingName, SettingValue
