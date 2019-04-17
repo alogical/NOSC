@@ -21,7 +21,7 @@ function New-SettingsObject () {
                 LocalPath = "$InvocationPath\..\..\database\devicedb"
             }
             Orion = [PSCustomObject]@{
-                Url = [String]::Empty
+                Hostname = [String]::Empty
                 AuthType = [OrionAuthType]::WindowsCredential
             }
         }
@@ -53,7 +53,7 @@ function New-SettingsDialog ([PSCustomObject]$Settings) {
             Orion = [PSCustomObject]@{
                 OptionContainer = $null
                 PrimarySource = $null
-                Url = $null
+                Hostname = $null
                 AuthType = $null
             }
         }
@@ -228,19 +228,19 @@ function New-SettingsDialog ([PSCustomObject]$Settings) {
         Add-Member -InputObject $csvdb_primarysource -MemberType NoteProperty -Name Interface -Value $interface
         Add-Member -InputObject $csvdb_primarysource -MemberType NoteProperty -Name Settings -Value $settings
 
-    $oriondb_url_settingname = New-Object System.Windows.Forms.Label
-        $oriondb_url_settingname.Location = New-Object System.Drawing.Point(0, 0)
-        $oriondb_url_settingname.TextAlign = [System.Drawing.ContentAlignment]::TopRight
-        $oriondb_url_settingname.Width = $width_settingname
-        $oriondb_url_settingname.Text = "SolarWinds Orion Hostname:"
+    $oriondb_hostname_settingname = New-Object System.Windows.Forms.Label
+        $oriondb_hostname_settingname.Location = New-Object System.Drawing.Point(0, 0)
+        $oriondb_hostname_settingname.TextAlign = [System.Drawing.ContentAlignment]::TopRight
+        $oriondb_hostname_settingname.Width = $width_settingname
+        $oriondb_hostname_settingname.Text = "SolarWinds Orion Hostname:"
 
-    $oriondb_url_settingvalue = New-Object System.Windows.Forms.TextBox
-        $left = $oriondb_url_settingname.Location.X + $oriondb_url_settingname.Width + $margin
-        $oriondb_url_settingvalue.Location = New-Object System.Drawing.Point($left, 0)
-        $oriondb_url_settingvalue.Width = $width_settingvalue
-        $interface.DatabaseOptions.Orion.Url = $oriondb_url_settingvalue
+    $oriondb_hostname_settingvalue = New-Object System.Windows.Forms.TextBox
+        $left = $oriondb_hostname_settingname.Location.X + $oriondb_hostname_settingname.Width + $margin
+        $oriondb_hostname_settingvalue.Location = New-Object System.Drawing.Point($left, 0)
+        $oriondb_hostname_settingvalue.Width = $width_settingvalue
+        $interface.DatabaseOptions.Orion.Hostname = $oriondb_hostname_settingvalue
 
-        Add-Member -InputObject $oriondb_url_settingvalue -MemberType NoteProperty -Name Settings -Value $settings
+        Add-Member -InputObject $oriondb_hostname_settingvalue -MemberType NoteProperty -Name Settings -Value $settings
 
     $oriondb_primarysource = New-Object System.Windows.Forms.RadioButton
         $oriondb_primarysource.Dock = [System.Windows.Forms.DockStyle]::Top
@@ -313,7 +313,6 @@ function New-SettingsDialog ([PSCustomObject]$Settings) {
         $interface.OptionsContainer.DatabaseOptions = $database_options_container
 
     $csvdb_options_panel = New-Object System.Windows.Forms.Panel
-        #$csvdb_options_panel.Dock = [System.Windows.Forms.DockStyle]::Fill
         $csvdb_options_panel.Width = $options_layout.Panel2.ClientSize.Width - $columnstyle0.Width
         $csvdb_options_panel.BackColor = [System.Drawing.Color]::White
         $interface.DatabaseOptions.Csv.OptionContainer = $csvdb_options_panel
@@ -328,7 +327,6 @@ function New-SettingsDialog ([PSCustomObject]$Settings) {
         [void]$database_options_container.Controls.Add($csvdb_options_panel, 1, 0)
 
     $oriondb_options_container = New-Object System.Windows.Forms.Panel
-        #$oriondb_options_container.Dock = [System.Windows.Forms.DockStyle]::Fill
         $oriondb_options_container.Width = $options_layout.Panel2.ClientSize.Width - $columnstyle0.Width
         $oriondb_options_container.BackColor = [System.Drawing.Color]::White
         $interface.DatabaseOptions.Orion.OptionContainer = $oriondb_options_container
@@ -342,13 +340,13 @@ function New-SettingsDialog ([PSCustomObject]$Settings) {
         [void]$oriondb_auth_panel.Controls.Add($oriondb_auth_settingvalue)
         [void]$oriondb_options_container.Controls.Add($oriondb_auth_panel)
 
-    $oriondb_url_panel = New-Object System.Windows.Forms.Panel
-        $oriondb_url_panel.Dock = [System.Windows.Forms.DockStyle]::Top
-        $oriondb_url_panel.Height = $oriondb_url_settingname.Height + $oriondb_url_panel.Margin.Top + $oriondb_url_panel.Margin.Bottom
+    $oriondb_hostname_panel = New-Object System.Windows.Forms.Panel
+        $oriondb_hostname_panel.Dock = [System.Windows.Forms.DockStyle]::Top
+        $oriondb_hostname_panel.Height = $oriondb_hostname_settingname.Height + $oriondb_hostname_panel.Margin.Top + $oriondb_hostname_panel.Margin.Bottom
 
-        [void]$oriondb_url_panel.Controls.Add($oriondb_url_settingname)
-        [void]$oriondb_url_panel.Controls.Add($oriondb_url_settingvalue)
-        [void]$oriondb_options_container.Controls.Add($oriondb_url_panel)
+        [void]$oriondb_hostname_panel.Controls.Add($oriondb_hostname_settingname)
+        [void]$oriondb_hostname_panel.Controls.Add($oriondb_hostname_settingvalue)
+        [void]$oriondb_options_container.Controls.Add($oriondb_hostname_panel)
 
         [void]$database_options_container.Controls.Add($interface.DatabaseOptions.Orion.PrimarySource, 0, 1)
         [void]$database_options_container.Controls.Add($oriondb_options_container, 1, 1)
