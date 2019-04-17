@@ -10,11 +10,8 @@
 function Get-Nodes () {
     if ($swis_connection -eq $null)
     {
-        $swis_connection = Open-SwisConnection
-        if ($swis_connection -eq $null)
-        {
-            return
-        }
+        Write-Error "SolarWinds Information Service connection not initialized."
+        return
     }
 
     $nodes = Get-SwisData -Query $QRY_NODE_INFO_BASE -SwisConnection $swis_connection
