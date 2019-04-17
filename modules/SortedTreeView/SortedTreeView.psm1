@@ -516,6 +516,10 @@ $Static.NewGroupBucket = {
         param($Record)
 
         $value = $Record.($this.Rule.Name)
+        if ([String]::IsNullOrEmpty($value))
+        {
+            $value = [String]::Empty
+        }
 
         if (!$this.Content.ContainsKey($value)) {
                     
@@ -539,8 +543,16 @@ $Static.NewGroupBucket = {
             $sorted = $this.Content.GetEnumerator() | Sort-Object -Property Key -Descending
         }
 
+        # Second level nodes (group name is null for this level)
+        $bottom = New-Object System.Collections.ArrayList
+
         # Build the Child Nodes in Sorted Order (Hashtable Key[GroupName]:Value[ChildBucket] Pairs)
         ForEach ($pair in $sorted) {
+            if ([String]::IsNullOrEmpty($pair.Key))
+            {
+                [void]$bottom.AddRange( $pair.Value.Build() )
+                continue
+            }
             $node = New-Object System.Windows.Forms.TreeNode($pair.Key)
 
             # CUSTOMIZE OBJECT
@@ -551,6 +563,10 @@ $Static.NewGroupBucket = {
 
             $node.Nodes.AddRange( $pair.Value.Build() )
             [void] $nodes.Add($node)
+        }
+        if ($bottom.Count -gt 0)
+        {
+            [void]$nodes.AddRange($bottom.ToArray())
         }
 
         return $nodes
