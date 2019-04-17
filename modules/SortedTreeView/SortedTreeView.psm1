@@ -126,6 +126,7 @@ $ModuleInvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyComm
 ###############################################################################
 
 function Initialize-Components {
+    [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
             [AllowNull()]
@@ -159,24 +160,28 @@ function Initialize-Components {
             $Source,
 
         # Collection of images to be used for TreeNodes.
-        [Parameter()]
+        [Parameter(Mandatory = $false)]
             [System.Windows.Forms.ImageList]
             $ImageList,
 
         # TreeView customization definition.
-        [Parameter()]
+        [Parameter(Mandatory = $false)]
             [PSCustomObject]
             $TreeDefinition,
 
         # Group TreeNode customization definition.
-        [Parameter()]
+        [Parameter(Mandatory = $false)]
             [PSCustomObject]
             $GroupDefinition,
 
         # Data TreeNode customization definition.
-        [Parameter()]
+        [Parameter(Mandatory = $false)]
             [PSCustomObject]
-            $NodeDefinition
+            $NodeDefinition,
+
+        [Parameter(Mandatory = $false)]
+            [Switch]
+            $Undockable
     )
 
     $Container = New-Object System.Windows.Forms.TabControl
@@ -196,12 +201,6 @@ function Initialize-Components {
     $Container.Controls.Add($TreeViewTab)
 
     # Settings Tab Parameter Sets
-    $DockSettings = @{
-        Window    = $Window
-        Component = $Container
-        Target    = $Parent
-    }
-
     $SettingParams = @{
         Component       = $Container
         TreeView        = $TreeViewTab.Controls["TreeView"]
@@ -210,7 +209,20 @@ function Initialize-Components {
     }
     $SettingsManager = New-SettingsManager @SettingParams
 
-    $SettingsTab = New-SettingsTab $SettingsManager $DockSettings
+    if ($Undockable)
+    {
+        $DockSettings = @{
+            Window    = $Window
+            Component = $Container
+            Target    = $Parent
+        }
+        $SettingsTab = New-SettingsTab $SettingsManager $DockSettings
+    }
+    else
+    {
+        $SettingsTab = New-SettingsTab $SettingsManager
+    }
+
     $Container.Controls.Add($SettingsTab)
 
     Add-Member -InputObject $Container -MemberType NoteProperty -Name TreeView -Value $TreeViewTab.Controls['TreeView']
@@ -832,7 +844,7 @@ function New-SettingsTab {
             [PSCustomObject]
             $SettingsManager,
 
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
             [Hashtable]
             $DockSettings
     )
@@ -854,7 +866,14 @@ function New-SettingsTab {
     $SettingsContainer.AutoScroll    = $true
 
     ### Static Data Configuration Panel ---------------------------------------
-    $DataPanel = New-DataStaticPanel $SettingsManager $DockSettings
+    if ($DockSettings)
+    {
+        $DataPanel = New-DataStaticPanel $SettingsManager $DockSettings
+    }
+    else
+    {
+        $DataPanel = New-DataStaticPanel $SettingsManager
+    }
 
     [void]$SettingsContainer.Controls.Add($DataPanel)
 
@@ -906,7 +925,7 @@ function New-DataStaticPanel {
             $SettingsManager,
 
         # The settings for the Dock/Undock button.
-        [Parameter(Mandatory = $true)]
+        [Parameter(Mandatory = $false)]
             [Hashtable]
             $DockSettings
     )
@@ -943,8 +962,11 @@ function New-DataStaticPanel {
     }
 
     ### Undock Button ---------------------------------------------------------
-    $UndockButton = New-UndockButton @DockSettings
-    [void]$DataNodePanel.Controls.Add($UndockButton)
+    if ($DockSettings)
+    {
+        $UndockButton = New-UndockButton @DockSettings
+        [void]$DataNodePanel.Controls.Add($UndockButton)
+    }
 
     ### Apply Button (SettingsManager) ----------------------------------------
     $ApplyButton = New-Object System.Windows.Forms.Button

@@ -32,7 +32,7 @@ function Initialize-Components {
 
         [Parameter(Mandatory = $true)]
             [AllowNull()]
-            [System.Windows.Forms.TabControl]
+            [System.Windows.Forms.Control]
             $Parent,
 
         [Parameter(Mandatory = $true)]

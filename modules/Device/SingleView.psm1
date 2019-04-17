@@ -52,7 +52,12 @@ function Initialize-Components {
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
             [System.Collections.ArrayList]
-            $OnLoad
+            $OnLoad,
+
+        [Parameter(Mandatory = $true)]
+            [AllowEmptyCollection()]
+            [System.Collections.ArrayList]
+            $OnClose
     )
 
     # Initialize
@@ -106,7 +111,7 @@ function Initialize-Components {
                 return
             }
 
-            if ($this.Setting.DatabaseOptions.Orion.AuthType -eq [OrionAuthType]::OrionCredential)
+            if ($this.Settings.DatabaseOptions.Orion.AuthType -eq [OrionAuthType]::OrionCredential)
             {
                 $credential = Get-Credential -Message "Enter Orion Credential"
                 if (Open-OrionSwisConnection $this.Settings.DatabaseOptions.Orion.Hostname -Credential $credential)
@@ -137,16 +142,15 @@ function Initialize-Components {
                     )
                 }
             }
-
-            if (Test-OrionSwisConnection)
-            {
-                Close-OrionSwisConnection
-            }
         }
     }
     Add-Member -InputObject $Loader -MemberType ScriptMethod -Name LoadCsv -Value ${Function:Load-CsvDeviceList}
     Add-Member -InputObject $Loader -MemberType ScriptMethod -Name LoadOrion -Value ${Function:Load-OrionDeviceList}
     [Void]$OnLoad.Add($Loader)
+
+    $Disposer = [PSCustomObject]@{
+        Close = {Close-OrionSwisConnection}
+    }
 
     # Register Component (TableLayout Parent)
     return $View
@@ -293,7 +297,7 @@ $Menu.File.OpenOrion = New-Object System.Windows.Forms.ToolStripMenuItem("OpenOr
             return
         }
 
-        if ($this.Setting.DatabaseOptions.Orion.AuthType -eq [OrionAuthType]::OrionCredential)
+        if ($this.Settings.DatabaseOptions.Orion.AuthType -eq [OrionAuthType]::OrionCredential)
         {
             $credential = Get-Credential -Message "Enter Orion Credential"
             if (!(Open-OrionSwisConnection $this.Settings.DatabaseOptions.Orion.Hostname -Credential $credential))
@@ -321,7 +325,6 @@ $Menu.File.OpenOrion = New-Object System.Windows.Forms.ToolStripMenuItem("OpenOr
         }
     }
     Load-OrionDeviceList -View $this.View -Component $this.Component
-    Close-OrionSwisConnection
 })
 $Menu.File.OpenOrion.Name = 'OpenOrion'
 Add-Member -InputObject $Menu.File.OpenOrion -MemberType NoteProperty -Name Settings -Value $Menu.Settings.Settings
@@ -577,7 +580,6 @@ function New-DataLayout {
         $DataLayout.Dock = [System.Windows.Forms.DockStyle]::Fill
         $DataLayout.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
         $DataLayout.BackColor     = [System.Drawing.Color]::AliceBlue
-        #$DataLayout.WrapContents  = $false
         $DataLayout.AutoSize      = $true
         $DataLayout.AutoSizeMode  = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
         $DataLayout.AutoScroll    = $true
@@ -647,18 +649,13 @@ function New-DataPanel {
     )
 
     $Panel = New-Object System.Windows.Forms.Panel
-        #$Panel.AutoSize = $true
-        #$Panel.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
         $Panel.Height = 40
-        #$Panel.Width  = $MaxWidth
         $Panel.Width = 200
 
     $TitleLabel = New-Object System.Windows.Forms.Label
         $TitleLabel.Text = $Title
         $TitleLabel.Dock = [System.Windows.Forms.DockStyle]::Top
         $TitleLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-        #$TitleLabel.AutoSize = $true
-        #$TitleLabel.Width = $MaxWidth
         $TitleLabel.Width = 200
 
     $DataBox = New-Object System.Windows.Forms.TextBox
@@ -666,8 +663,6 @@ function New-DataPanel {
             $DataBox.Text = $Data
         }
         $DataBox.Dock = [System.Windows.Forms.DockStyle]::Top
-        #$DataBox.AutoSize = $true
-        #$DataBox.Width = $MaxWidth
         $DataBox.Width = 200
 
     [Void]$Panel.Controls.Add($DataBox)

@@ -22,7 +22,8 @@ Import-Module "$ModuleInvocationPath\modules\STIGViewer\STIGViewer.psm1"
 Import-Module "$ModuleInvocationPath\modules\Compliance\Compliance.psm1" -Prefix Compliance
 Import-Module "$ModuleInvocationPath\modules\Device\Device.psm1" -Prefix Device
 
-$OnLoad = New-Object System.Collections.ArrayList
+$OnLoad  = New-Object System.Collections.ArrayList
+$OnClose = New-Object System.Collections.ArrayList
 
 ###############################################################################
 # Window Definition
@@ -44,8 +45,20 @@ $MainForm.Add_Load({
     }
 
     # Discard the OnLoad Handlers (Free Memory)
-    # -- These only ever used once during the initial loading of the window.
+    # -- These are only ever used once during the initial loading of the graphical
+    #    interface.
     $OnLoad.Clear()
+})
+
+$MainForm.Add_Closing({
+    param($sender, $e)
+
+    # Execute Child OnClose Handlers
+    # -- Critical for any sub-components that may need to close network sockets,
+    #    free memory, etc...
+    foreach ($handler in $OnClose) {
+        $handler.Close()
+    }
 })
 
 ###############################################################################
@@ -58,17 +71,25 @@ $Menu = New-Object System.Windows.Forms.MenuStrip
     [void]$MainForm.Controls.Add($Menu)
 
 ###############################################################################
-# Base Content Tab Control Container Definitions
+# Base Content Tab Control Container
 $TabContainer = New-Object System.Windows.Forms.TabControl
     $TabContainer.Dock = [System.Windows.Forms.DockStyle]::Fill
     
     [void]$MainForm.Controls.Add( $TabContainer )
 
+$ComponentParams = @{
+    Window  = $MainForm
+    Parent  = $TabContainer
+    Menu    = $Menu
+    OnLoad  = $OnLoad
+    OnClose = $OnClose
+}
+
 ###############################################################################
 # Register Components
-Initialize-DeviceComponents $MainForm $TabContainer $Menu $OnLoad
+[void]$TabContainer.Controls.Add( (Initialize-DeviceComponents @ComponentParams) )
 #[void]$Menu.Items.Add( (New-Object System.Windows.Forms.ToolStripSeparator) )
-Initialize-ComplianceComponents $MainForm $TabContainer $Menu $OnLoad
+[void]$TabContainer.Controls.Add( (Initialize-ComplianceComponents @ComponentParams) )
 #[void]$Menu.Items.Add( (New-Object System.Windows.Forms.ToolStripSeparator) )
 Initialize-PuttyComponents $null $null $Menu $OnLoad
 

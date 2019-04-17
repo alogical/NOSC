@@ -29,25 +29,42 @@ $ModuleInvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyComm
 function Initialize-Components {
     param(
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.Form]$Window,
+            [System.Windows.Forms.Form]
+            $Window,
 
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.TabControl]$Parent,
+            [System.Windows.Forms.Control]
+            $Parent,
 
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.MenuStrip]$MenuStrip,
+            [System.Windows.Forms.MenuStrip]
+            $MenuStrip,
 
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
-            [System.Collections.ArrayList]$OnLoad
+            [System.Collections.ArrayList]
+            $OnLoad,
+
+        [Parameter(Mandatory = $true)]
+            [AllowEmptyCollection()]
+            [System.Collections.ArrayList]
+            $OnClose
     )
 
     $Container, $Layout, $ComponentMenuStrip = New-Component
-    [void]$Parent.TabPages.Add($Container)
 
-    $ViewComponent = Initialize-ViewComponents -Window $Window -Parent $Container -MenuStrip $ComponentMenuStrip -OnLoad $OnLoad
-
+    # SingleView params.
+    $ViewParams = @{
+        Window    = $Window
+        Parent    = $Container
+        MenuStrip = $ComponentMenuStrip
+        OnLoad    = $OnLoad
+        OnClose   = $OnClose
+    }
+    $ViewComponent = Initialize-ViewComponents @ViewParams
     [Void]$Layout.Controls.Add($ViewComponent, 0, 1)
+
+    return $Container
 }
 
 Export-ModuleMember -Function *
