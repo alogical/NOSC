@@ -75,6 +75,14 @@ function Open-SwisConnection {
     )
 
     $swis_connection = Connect-Swis -Hostname $ServerName -Trusted
+    if ($swis_connection -ne $null)
+    {
+        return $true
+    }
+    else
+    {
+        return $false
+    }
 }
 
 function Close-SwisConnection () {
