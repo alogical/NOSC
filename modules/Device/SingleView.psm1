@@ -256,7 +256,7 @@ Add-Member -InputObject $Menu.File.SaveAs.Csv -MemberType NoteProperty -Name Vie
 $Menu.File.SaveAs.Root = New-Object System.Windows.Forms.ToolStripMenuItem("Save As", $null, @($Menu.File.SaveAs.Csv))
 $Menu.File.SaveAs.Root.Name = 'SaveAs'
 
-$Menu.File.OpenCsv = New-Object System.Windows.Forms.ToolStripMenuItem("Open", $null, {
+$Menu.File.OpenCsv = New-Object System.Windows.Forms.ToolStripMenuItem("Open Csv", $null, {
     param($sender, $e)
     
     $Dialog = New-Object System.Windows.Forms.OpenFileDialog
@@ -279,7 +279,7 @@ Add-Member -InputObject $Menu.File.OpenCsv -MemberType NoteProperty -Name Compon
 Add-Member -InputObject $Menu.File.OpenCsv -MemberType NoteProperty -Name View -Value $null
 [void]$Menu.Settings.Subscribers.Add($Menu.File.OpenCsv)
 
-$Menu.File.OpenOrion = New-Object System.Windows.Forms.ToolStripMenuItem("OpenOrion", $null, {
+$Menu.File.OpenOrion = New-Object System.Windows.Forms.ToolStripMenuItem("Open Orion", $null, {
     param($sender, $e)
     if ([String]::IsNullOrEmpty($this.Settings.DatabaseOptions.Orion.Hostname))
     {
@@ -719,7 +719,7 @@ $TreeViewDefinition.Methods.GetChecked = {
     }
 
     foreach ($node in $this.DataNodes) {
-        if ($node.Checked -and $node.Type -eq 'Data' -and $node.Tag.Access_Method.ToUpper() -match 'SSH') {
+        if ($node.Checked -and $node.Type -eq 'Data') {
             [Void] $checked.Add( $node.Tag )
         }
     }
@@ -878,8 +878,8 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
     [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripMenuItem("PuTTY", $null, {
         param ($sender, $e)
         $menu = $sender.GetCurrentParent()
-        [System.Windows.Forms.TreeView] $treeview = $menu.SourceControl
-        [System.Windows.Forms.TreeNode] $node = $treeview.SelectedNode
+        [System.Windows.Forms.TreeView] $TreeView = $menu.SourceControl
+        [System.Windows.Forms.TreeNode] $node = $TreeView.SelectedNode
 
         $target = [PSCustomObject]@{
             Hostname = $node.Tag.Hostname
@@ -894,12 +894,12 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
     [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripMenuItem("Multi-PuTTY", $null, {
         param ($sender, $e)
         $menu = $sender.GetCurrentParent()
-        [System.Windows.Forms.TreeView] $treeview = $menu.SourceControl
-        [System.Windows.Forms.TreeNode] $node = $treeview.SelectedNode
+        [System.Windows.Forms.TreeView] $TreeView = $menu.SourceControl
+        [System.Windows.Forms.TreeNode] $node = $TreeView.SelectedNode
 
         # Multi-select (checked) support.  GetChecked returns a System.Array
         $records = New-Object System.Collections.ArrayList
-        $checked = $treeview.GetChecked()
+        $checked = $TreeView.GetChecked()
 
         if ($checked) {
             $records.AddRange($checked)
