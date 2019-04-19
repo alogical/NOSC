@@ -63,6 +63,11 @@ function Initialize-Components {
     # Initialize
     $View = New-ViewControl -Window $Window -Container $Parent -OnLoad $OnLoad
 
+    if (![String]::IsNullOrEmpty($Menu.Settings.Settings.DisplayOptions.Default))
+    {
+        [void]$View.NavPanel.Settings.Load( (ConvertFrom-Json (Get-Content $Menu.Settings.Settings.DisplayOptions.Default -Raw)) )
+    }
+
     # Menu Configuration
     $Menu.File.SaveAs.Csv.Component = $Parent
     $Menu.File.SaveAs.Csv.View      = $View
