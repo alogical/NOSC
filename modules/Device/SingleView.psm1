@@ -13,6 +13,16 @@
 
 Add-Type -AssemblyName System.Windows.Forms
 
+enum DeviceSource {
+    Csv = 0
+    Orion = 1
+}
+
+enum OrionAuthType {
+    WindowsCredential = 0
+    OrionCredential = 1
+}
+
 $ModuleInvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
 
 ###############################################################################
@@ -42,48 +52,110 @@ function Initialize-Components {
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
             [System.Collections.ArrayList]
-            $OnLoad
+            $OnLoad,
+
+        [Parameter(Mandatory = $true)]
+            [AllowEmptyCollection()]
+            [System.Collections.ArrayList]
+            $OnClose
     )
 
     # Initialize
     $View = New-ViewControl -Window $Window -Container $Parent -OnLoad $OnLoad
 
+    if (![String]::IsNullOrEmpty($Menu.Settings.Settings.DisplayOptions.Default))
+    {
+        [void]$View.NavPanel.Settings.Load( (ConvertFrom-Json (Get-Content $Menu.Settings.Settings.DisplayOptions.Default -Raw)) )
+    }
+
     # Menu Configuration
     $Menu.File.SaveAs.Csv.Component = $Parent
     $Menu.File.SaveAs.Csv.View      = $View
-    $Menu.File.Open.Component       = $Parent
-    $Menu.File.Open.View            = $View
+    $Menu.File.OpenCsv.Component    = $Parent
+    $Menu.File.OpenCsv.View         = $View
+    $Menu.File.OpenOrion.Component  = $Parent
+    $Menu.File.OpenOrion.View       = $View
 
     [Void]$MenuStrip.Items.Add($Menu.File.Root)
     [Void]$MenuStrip.Items.Add($Menu.Fields)
     [Void]$MenuStrip.Items.Add($Menu.Settings)
 
     $Loader = [PSCustomObject]@{
-        Settings = $Settings
+        Settings = $Menu.Settings.Settings
         View     = $View
         Parent   = $Parent
     }
     Add-Member -InputObject $Loader -MemberType ScriptMethod -Name Load -Value {
         param($sender, $e)
-        if ($this.Settings) {
-            if ($this.Settings.remotedb -eq [string]::Empty) {
+        if ($this.Settings -eq $null)
+        {
+            return
+        }
+
+        if ($this.Settings.DatabaseOptions.PrimarySource -eq [DeviceSource]::Csv)
+        {
+            if ([String]::IsNullOrEmpty($this.Settings.DatabaseOptions.Csv.RemotePath)) {
                 return
             }
-            if (Test-Path -LiteralPath $this.Settings.remotedb -PathType Leaf) {
-                $this.Load_DeviceList($this.Settings.remotedb, $this.View, $this.Parent)
+            if (Test-Path -LiteralPath $this.Settings.DatabaseOptions.Csv.RemotePath -PathType Leaf) {
+                $this.LoadCsv($this.Settings.DatabaseOptions.Csv.RemotePath, $this.View, $this.Parent)
             }
             else {
                 [System.Windows.Forms.MessageBox]::Show(
-                    ("The shared remote device list database csv file could not be found.`r`n{0}`r`nPlease check the settings to ensure you have set the correct location." -f $this.Settings.remotedb),
+                    ("The shared remote device list database csv file could not be found.`r`n{0}`r`nPlease check the settings to ensure you have set the correct location." -f $this.Settings.DatabaseOptions.Csv.RemotePath),
                     "Load Device List",
                     [System.Windows.Forms.MessageBoxButtons]::OK,
                     [System.Windows.Forms.MessageBoxIcon]::Error
                 )
             }
         }
+        elseif ($this.Settings.DatabaseOptions.PrimarySource -eq [DeviceSource]::Orion)
+        {
+            if ([String]::IsNullOrEmpty($this.Settings.DatabaseOptions.Orion.Hostname))
+            {
+                return
+            }
+
+            if ($this.Settings.DatabaseOptions.Orion.AuthType -eq [OrionAuthType]::OrionCredential)
+            {
+                $credential = Get-Credential -Message "Enter Orion Credential"
+                if (Open-OrionSwisConnection $this.Settings.DatabaseOptions.Orion.Hostname -Credential $credential)
+                {
+                    $this.LoadOrion($this.View, $this.Parent)
+                }
+                else
+                {
+                    [System.Windows.Forms.MessageBox]::Show(
+                        ("Could not connect to the SolarWinds server: {0}." -f $this.Settings.DatabaseOptions.Orion.Hostname),
+                        [System.Windows.Forms.MessageBoxButtons]::OK,
+                        [System.Windows.Forms.MessageBoxIcon]::Error
+                    )
+                }
+            }
+            elseif ($this.Settings.DatabaseOptions.Orion.AuthType -eq [OrionAuthType]::WindowsCredential)
+            {
+                if (Open-OrionSwisConnection $this.Settings.DatabaseOptions.Orion.Hostname)
+                {
+                    $this.LoadOrion($this.View, $this.Parent)
+                }
+                else
+                {
+                    [System.Windows.Forms.MessageBox]::Show(
+                        ("Could not connect to the SolarWinds server: {0}." -f $this.Settings.DatabaseOptions.Orion.Hostname),
+                        [System.Windows.Forms.MessageBoxButtons]::OK,
+                        [System.Windows.Forms.MessageBoxIcon]::Error
+                    )
+                }
+            }
+        }
     }
-    Add-Member -InputObject $Loader -MemberType ScriptMethod -Name Load_DeviceList -Value ${Function:Load-DeviceList}
+    Add-Member -InputObject $Loader -MemberType ScriptMethod -Name LoadCsv -Value ${Function:Load-CsvDeviceList}
+    Add-Member -InputObject $Loader -MemberType ScriptMethod -Name LoadOrion -Value ${Function:Load-OrionDeviceList}
     [Void]$OnLoad.Add($Loader)
+
+    $Disposer = [PSCustomObject]@{
+        Close = {Close-OrionSwisConnection}
+    }
 
     # Register Component (TableLayout Parent)
     return $View
@@ -100,24 +172,48 @@ Export-ModuleMember -Function *
 ###############################################################################
 ###############################################################################
 Import-Module "$ModuleInvocationPath\..\SortedTreeView\SortedTreeView.psm1" -Prefix Nav
+Import-Module "$ModuleInvocationPath\SolarWinds.psm1" -Prefix Orion
+Import-Module "$ModuleInvocationPath\Settings.psm1"
 
 $ImagePath = "$ModuleInvocationPath\..\..\resources"
 $BinPath   = "$ModuleInvocationPath\..\..\bin"
 
 ###############################################################################
-### Settings Management -------------------------------------------------------
-$Settings = $null
-$SettingsPath = "$ModuleInvocationPath\settings.json"
-$SettingsDialog = "$ModuleInvocationPath\settings.ps1"
-
-## Load Settings
-if (Test-Path -LiteralPath $SettingsPath -PathType Leaf) {
-    $Settings = ConvertFrom-Json ((Get-Content $SettingsPath) -join '')
-}
-
-###############################################################################
 ### Menu Definitions - Registered to parent menu strip
 $Menu = @{}
+
+## Settings Menu --------------------------------------------------------------
+$Menu.Settings = New-Object System.Windows.Forms.ToolStripMenuItem("Settings", $null, {
+    # Currently only launches the settings dialog window, configuration settings are
+    # only used during loading.
+    if ($this.Settings -eq $null)
+    {
+        $dialog = New-SettingsDialog -Settings (New-SettingsObject)
+    }
+    else
+    {
+        $dialog = New-SettingsDialog $this.Settings
+    }
+
+    if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK)
+    {
+        $this.Settings = $dialog.Settings
+        foreach ($object in $this.Subscribers)
+        {
+            $object.Settings = $dialog.Settings
+        }
+        $json = $dialog.Settings | ConvertTo-Json -Depth 5
+        $json > $this.FilePath
+    }
+    $dialog.Dispose()
+})
+Add-Member -InputObject $Menu.Settings -MemberType NoteProperty -Name Settings -Value $null
+Add-Member -InputObject $Menu.Settings -MemberType NoteProperty -Name Subscribers -Value (New-Object System.Collections.ArrayList)
+Add-Member -InputObject $Menu.Settings -MemberType NoteProperty -Name FilePath -Value "$ModuleInvocationPath\settings.json"
+## Load Settings
+if (Test-Path -LiteralPath $Menu.Settings.FilePath -PathType Leaf) {
+    $Menu.Settings.Settings = ConvertFrom-Json (Get-Content $Menu.Settings.FilePath -Raw)
+}
 
 ## File Menu ------------------------------------------------------------------
 $Menu.File = @{}
@@ -160,7 +256,7 @@ Add-Member -InputObject $Menu.File.SaveAs.Csv -MemberType NoteProperty -Name Vie
 $Menu.File.SaveAs.Root = New-Object System.Windows.Forms.ToolStripMenuItem("Save As", $null, @($Menu.File.SaveAs.Csv))
 $Menu.File.SaveAs.Root.Name = 'SaveAs'
 
-$Menu.File.Open = New-Object System.Windows.Forms.ToolStripMenuItem("Open", $null, {
+$Menu.File.OpenCsv = New-Object System.Windows.Forms.ToolStripMenuItem("Open Csv", $null, {
     param($sender, $e)
     
     $Dialog = New-Object System.Windows.Forms.OpenFileDialog
@@ -177,19 +273,72 @@ $Menu.File.Open = New-Object System.Windows.Forms.ToolStripMenuItem("Open", $nul
         Load-DeviceList -Path $Dialog.FileName -View $this.View -Component $this.Component
     }
 })
-$Menu.File.Open.Name = 'Open'
-Add-Member -InputObject $Menu.File.Open -MemberType NoteProperty -Name Component -Value $null
-Add-Member -InputObject $Menu.File.Open -MemberType NoteProperty -Name View -Value $null
+$Menu.File.OpenCsv.Name = 'OpenCsv'
+Add-Member -InputObject $Menu.File.OpenCsv -MemberType NoteProperty -Name Settings -Value $Menu.Settings.Settings
+Add-Member -InputObject $Menu.File.OpenCsv -MemberType NoteProperty -Name Component -Value $null
+Add-Member -InputObject $Menu.File.OpenCsv -MemberType NoteProperty -Name View -Value $null
+[void]$Menu.Settings.Subscribers.Add($Menu.File.OpenCsv)
 
-$Menu.File.Root = New-Object System.Windows.Forms.ToolStripMenuItem("File", $null, @($Menu.File.SaveAs.Root, $Menu.File.Open))
-$Menu.File.Root.Name = 'File'
+$Menu.File.OpenOrion = New-Object System.Windows.Forms.ToolStripMenuItem("Open Orion", $null, {
+    param($sender, $e)
+    if ([String]::IsNullOrEmpty($this.Settings.DatabaseOptions.Orion.Hostname))
+    {
+        ### TODO ### Put a message box here to inform the user that no SolarWinds Orion server info has been configured in the settings.
+        Write-Error "No SolarWinds Orion hostname configured in settings."
+        return
+    }
 
-## Settings Menu --------------------------------------------------------------
-$Menu.Settings = New-Object System.Windows.Forms.ToolStripMenuItem("Settings", $null, {
-    # Currently only launches the settings dialog window, configuration settings are
-    # only used during loading.
-    $Settings = & "$SettingsDialog" $Settings
+    if (!(Test-OrionSwisConnection))
+    {
+        if (!(Open-OrionSwisConnection $this.Settings.DatabaseOptions.Orion.Hostname))
+        {
+            ### TODO ### Put a message box here to inform the user that the connection couldn't be opened.
+            Write-Error "Swis connection could not be established to SolarWinds Orion server."
+            return
+        }
+
+        if ([String]::IsNullOrEmpty($this.Settings.DatabaseOptions.Orion.Hostname))
+        {
+            return
+        }
+
+        if ($this.Settings.DatabaseOptions.Orion.AuthType -eq [OrionAuthType]::OrionCredential)
+        {
+            $credential = Get-Credential -Message "Enter Orion Credential"
+            if (!(Open-OrionSwisConnection $this.Settings.DatabaseOptions.Orion.Hostname -Credential $credential))
+            {
+                Write-Error "Swis connection could not be established to SolarWinds Orion server."
+                [System.Windows.Forms.MessageBox]::Show(
+                    ("Could not connect to the SolarWinds server: {0}." -f $this.Settings.DatabaseOptions.Orion.Hostname),
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Error
+                )
+                return
+            }
+        }
+        elseif ($this.Settings.DatabaseOptions.Orion.AuthType -eq [OrionAuthType]::WindowsCredential)
+        {
+            if (!(Open-OrionSwisConnection $this.Settings.DatabaseOptions.Orion.Hostname))
+            {
+                Write-Error "Swis connection could not be established to SolarWinds Orion server."
+                [System.Windows.Forms.MessageBox]::Show(
+                    ("Could not connect to the SolarWinds server: {0}." -f $this.Settings.DatabaseOptions.Orion.Hostname),
+                    [System.Windows.Forms.MessageBoxButtons]::OK,
+                    [System.Windows.Forms.MessageBoxIcon]::Error
+                )
+            }
+        }
+    }
+    Load-OrionDeviceList -View $this.View -Component $this.Component
 })
+$Menu.File.OpenOrion.Name = 'OpenOrion'
+Add-Member -InputObject $Menu.File.OpenOrion -MemberType NoteProperty -Name Settings -Value $Menu.Settings.Settings
+Add-Member -InputObject $Menu.File.OpenOrion -MemberType NoteProperty -Name Component -Value $null
+Add-Member -InputObject $Menu.File.OpenOrion -MemberType NoteProperty -Name View -Value $null
+[void]$Menu.Settings.Subscribers.Add($Menu.File.OpenOrion)
+
+$Menu.File.Root = New-Object System.Windows.Forms.ToolStripMenuItem("File", $null, @($Menu.File.SaveAs.Root, $Menu.File.OpenCsv, $Menu.File.OpenOrion))
+$Menu.File.Root.Name = 'File'
 
 ## Dynamic Fields Menu --------------------------------------------------------
 $Menu.Fields = New-Object System.Windows.Forms.ToolStripMenuItem("Fields")
@@ -207,6 +356,39 @@ $Menu.Fields.DropDown.Add_Closing({
 
 function Load-DeviceList {
     param(
+        # File path to CSV device list, or SolarWinds Orion server hostname.
+        [Parameter(Mandatory = $true)]
+            [String]
+            $Path,
+
+        # View container for the interface.
+        [Parameter(Mandatory = $true)]
+            [System.Windows.Forms.SplitContainer]
+            $View,
+
+        # The devices component container control.
+        [Parameter(Mandatory = $true)]
+            [System.Windows.Forms.Control]
+            $Component,
+
+        # Switch to load device list from SolarWinds Orion server host.
+        [Parameter(Mandatory = $false)]
+            [Switch]
+            $Orion
+    )
+
+    if ($Orion)
+    {
+        Load-OrionDeviceList -View $View -Component $Component
+    }
+    else
+    {
+        Load-CsvDeviceList -Path $Path -View $View -Component $Component
+    }
+}
+
+function Load-CsvDeviceList {
+    param(
         [Parameter(Mandatory = $true)]
             [String]
             $Path,
@@ -221,6 +403,38 @@ function Load-DeviceList {
     )
 
     $Data = Import-Csv $Path
+    Set-DeviceList -Data $Data -View $View -Component $Component
+}
+
+function Load-OrionDeviceList {
+    param(
+        [Parameter(Mandatory = $true)]
+            [System.Windows.Forms.SplitContainer]
+            $View,
+
+        [Parameter(Mandatory = $true)]
+            [System.Windows.Forms.Control]
+            $Component
+    )
+
+    $Data = Get-OrionNodes
+    Set-DeviceList -Data $Data -View $View -Component $Component
+}
+
+function Set-DeviceList {
+    param(
+        [Parameter(Mandatory = $true)]
+            [System.Array]
+            $Data,
+
+        [Parameter(Mandatory = $true)]
+            [System.Windows.Forms.SplitContainer]
+            $View,
+
+        [Parameter(Mandatory = $true)]
+            [System.Windows.Forms.Control]
+            $Component
+    )
 
     if ($View.NavPanel.TreeView.Nodes.Count -gt 0) {
         $View.NavPanel.TreeView.Nodes.Clear()
@@ -371,7 +585,6 @@ function New-DataLayout {
         $DataLayout.Dock = [System.Windows.Forms.DockStyle]::Fill
         $DataLayout.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
         $DataLayout.BackColor     = [System.Drawing.Color]::AliceBlue
-        #$DataLayout.WrapContents  = $false
         $DataLayout.AutoSize      = $true
         $DataLayout.AutoSizeMode  = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
         $DataLayout.AutoScroll    = $true
@@ -441,18 +654,13 @@ function New-DataPanel {
     )
 
     $Panel = New-Object System.Windows.Forms.Panel
-        #$Panel.AutoSize = $true
-        #$Panel.AutoSizeMode = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
         $Panel.Height = 40
-        #$Panel.Width  = $MaxWidth
         $Panel.Width = 200
 
     $TitleLabel = New-Object System.Windows.Forms.Label
         $TitleLabel.Text = $Title
         $TitleLabel.Dock = [System.Windows.Forms.DockStyle]::Top
         $TitleLabel.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-        #$TitleLabel.AutoSize = $true
-        #$TitleLabel.Width = $MaxWidth
         $TitleLabel.Width = 200
 
     $DataBox = New-Object System.Windows.Forms.TextBox
@@ -460,8 +668,6 @@ function New-DataPanel {
             $DataBox.Text = $Data
         }
         $DataBox.Dock = [System.Windows.Forms.DockStyle]::Top
-        #$DataBox.AutoSize = $true
-        #$DataBox.Width = $MaxWidth
         $DataBox.Width = 200
 
     [Void]$Panel.Controls.Add($DataBox)
@@ -513,7 +719,7 @@ $TreeViewDefinition.Methods.GetChecked = {
     }
 
     foreach ($node in $this.DataNodes) {
-        if ($node.Checked -and $node.Type -eq 'Data' -and $node.Tag.Access_Method.ToUpper() -match 'SSH') {
+        if ($node.Checked -and $node.Type -eq 'Data') {
             [Void] $checked.Add( $node.Tag )
         }
     }
@@ -546,21 +752,45 @@ $TreeViewDefinition.Handlers.KeyDown = {
     {
         [System.Windows.Forms.TreeNode] $Node = $sender.SelectedNode
 
-        if ($Node.Type -ne 'Data' -or $Node.Tag.Access_Method.ToUpper() -notmatch 'SSH') {
-            [System.Windows.Forms.MessageBox]::Show(
-                ("[{0}] SSH not supported!" -f $Node.Text),
-                'PuTTY Secure Shell',
-                [System.Windows.Forms.MessageBoxButtons]::OK,
-                [System.Windows.Forms.MessageBoxIcon]::Exclamation)
-            return
-        }
+        switch ($Node.Tag.RemoteManagement)
+        {
+            'URL' {
+                # Default browser.
+                Start-Process -FilePath $Node.Tag.URL
+            }
 
-        # Open PuTTY session for node
-        $target = [PSCustomObject]@{
-            Hostname = $Node.Tag.Device_Hostname
-            IP       = $Node.Tag.ip
+            'SSH' {
+                # Open PuTTY session for node
+                $target = [PSCustomObject]@{
+                    Hostname = $Node.Tag.Hostname
+                    IP       = $Node.Tag.ip
+                }
+                Open-PuttySSH $target
+
+            }
+
+            'RDP' {
+                # Attempt to resolve hostname.
+                $resolved = $null
+                try
+                {
+                    $resolved = [System.Net.Dns]::Resolve($Node.Tag.DNS)
+                }
+                finally
+                {
+                    if ($resolved -ne $null)
+                    {
+                        # Microsoft Terminal Services Client
+                        Start-Process "mstsc.exe" -ArgumentList "/v:$($Node.Tag.IP)"
+                    }
+                    else
+                    {
+                        # Microsoft Terminal Services Client
+                        Start-Process "mstsc.exe" -ArgumentList "/v:$($Node.Tag.DNS)"
+                    }
+                }
+            }
         }
-        Open-PuttySSH $target
 
         # Prevent other controls from receiving this event
         $e.SuppressKeyPress = $true
@@ -648,12 +878,12 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
     [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripMenuItem("PuTTY", $null, {
         param ($sender, $e)
         $menu = $sender.GetCurrentParent()
-        [System.Windows.Forms.TreeView] $treeview = $menu.SourceControl
-        [System.Windows.Forms.TreeNode] $node = $treeview.SelectedNode
+        [System.Windows.Forms.TreeView] $TreeView = $menu.SourceControl
+        [System.Windows.Forms.TreeNode] $node = $TreeView.SelectedNode
 
         $target = [PSCustomObject]@{
-            Hostname = $node.Tag.Device_Hostname
-            IP       = $node.Tag.ip
+            Hostname = $node.Tag.Hostname
+            IP       = $node.Tag.IP
         }
 
         # Dependency... Putty.psm1; imported globally by initialization script nosc.ps1
@@ -664,12 +894,12 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
     [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripMenuItem("Multi-PuTTY", $null, {
         param ($sender, $e)
         $menu = $sender.GetCurrentParent()
-        [System.Windows.Forms.TreeView] $treeview = $menu.SourceControl
-        [System.Windows.Forms.TreeNode] $node = $treeview.SelectedNode
+        [System.Windows.Forms.TreeView] $TreeView = $menu.SourceControl
+        [System.Windows.Forms.TreeNode] $node = $TreeView.SelectedNode
 
         # Multi-select (checked) support.  GetChecked returns a System.Array
         $records = New-Object System.Collections.ArrayList
-        $checked = $treeview.GetChecked()
+        $checked = $TreeView.GetChecked()
 
         if ($checked) {
             $records.AddRange($checked)
@@ -682,8 +912,8 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
         # Dependency... Putty.psm1; imported globally by initialization script nosc.ps1
         foreach ($record in $records) {
             $target = [PSCustomObject]@{
-                Hostname = $record.Device_Hostname
-                IP       = $record.ip
+                Hostname = $record.Hostname
+                IP       = $record.IP
             }
 
             Open-PuttySSH $target
@@ -697,7 +927,7 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
         [System.Windows.Forms.TreeView] $TreeView = $Menu.SourceControl
         [System.Windows.Forms.TreeNode] $TreeNode = $TreeView.SelectedNode
 
-        if ($TreeNode.Type -ne 'Data' -or $TreeNode.Tag.Access_Method.ToUpper() -notmatch 'SSH') {
+        if ($TreeNode.Type -ne 'Data' -or $TreeNode.Tag.SSH -eq $null) {
             [System.Windows.Forms.MessageBox]::Show(
                 ("[{0}] pSCP not supported!" -f $TreeNode.Text),
                 'pSCP Secure Copy',
@@ -718,8 +948,8 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
         # Run Selection Dialog
         if($($Dialog.ShowDialog()) -eq "OK") {
             $target = [PSCustomObject]@{
-            Hostname = $TreeNode.Tag.Device_Hostname
-            IP       = $TreeNode.Tag.ip
+            Hostname = $TreeNode.Tag.Hostname
+            IP       = $TreeNode.Tag.IP
             }
 
             $file = Get-Item $Dialog.FileName
@@ -736,8 +966,25 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
         [System.Windows.Forms.TreeView] $TreeView = $Menu.SourceControl
         [System.Windows.Forms.TreeNode] $Node = $TreeView.SelectedNode
 
-        # Microsoft Terminal Services Client
-        Start-Process "mstsc.exe" -ArgumentList "/v:$($Node.Tag.IP)"
+        # Attempt to resolve hostname.
+        $resolved = $null
+        try
+        {
+            $resolved = [System.Net.Dns]::Resolve($Node.Tag.DNS)
+        }
+        finally
+        {
+            if ($resolved -ne $null)
+            {
+                # Microsoft Terminal Services Client
+                Start-Process "mstsc.exe" -ArgumentList "/v:$($Node.Tag.IP)"
+            }
+            else
+            {
+                # Microsoft Terminal Services Client
+                Start-Process "mstsc.exe" -ArgumentList "/v:$($Node.Tag.DNS)"
+            }
+        }
     })))
 
     ## HTTP -------------------------------------------------------------------
@@ -748,19 +995,8 @@ $DataNodeDefinition.Properties.ContextMenuStrip = &{
         [System.Windows.Forms.TreeView] $TreeView = $Menu.SourceControl
         [System.Windows.Forms.TreeNode] $Node = $TreeView.SelectedNode
 
-        # Microsoft Terminal Services Client
-        Start-Process -FilePath "http://$($Node.Tag.IP)"
-    })))
-
-    ## HTTPS ------------------------------------------------------------------
-    [Void]$context.Items.Add( (New-Object System.Windows.Forms.ToolStripMenuItem("HTTPS", $null, {
-        param ($sender, $e)
-        $Menu = $sender.GetCurrentParent()
-        [System.Windows.Forms.TreeView] $TreeView = $Menu.SourceControl
-        [System.Windows.Forms.TreeNode] $Node = $TreeView.SelectedNode
-
-        # Microsoft Terminal Services Client
-        Start-Process -FilePath "https://$($Node.Tag.IP)"
+        # Default browser.
+        Start-Process -FilePath $Node.Tag.URL
     })))
 
     return $context

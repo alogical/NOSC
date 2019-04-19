@@ -31,7 +31,7 @@ function Initialize-Components {
             $Window,
 
         [Parameter(Mandatory = $true)]
-            [System.Windows.Forms.TabControl]
+            [System.Windows.Forms.Control]
             $Parent,
 
         [Parameter(Mandatory = $true)]
@@ -41,7 +41,12 @@ function Initialize-Components {
         [Parameter(Mandatory = $true)]
             [AllowEmptyCollection()]
             [System.Collections.ArrayList]
-            $OnLoad
+            $OnLoad,
+
+        [Parameter(Mandatory = $true)]
+            [AllowEmptyCollection()]
+            [System.Collections.ArrayList]
+            $OnClose
     )
 
     $Explorer = Initialize-TreeComponents `
@@ -61,12 +66,11 @@ function Initialize-Components {
     # Attach reference to the navigation tree object for easy access by child components
     Add-Member -InputObject $BaseContainer -MemberType NoteProperty -Name Explorer -Value $Explorer
 
-    # Register Component Container
-    [Void]$Parent.TabPages.Add($BaseContainer)
-
     # Register Child Components
     Initialize-ReportComponents -Window $Window -Parent $TabContainer -MenuStrip $MenuStrip -Source $BaseContainer -OnLoad $OnLoad
     Initialize-DetailComponents -Window $Window -Parent $TabContainer -MenuStrip $MenuStrip -OnLoad $OnLoad
+
+    return $BaseContainer
 }
 
 Export-ModuleMember -Function *

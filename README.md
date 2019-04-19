@@ -4,7 +4,8 @@ NOSC - Network Operations Sustainment Center
 NOSC provides an integrated interface for network management utilities.
 
 -- FEATURES
-  - Network device list management between multiple users.
+  - Network device list management between multiple users, with SolarWinds
+    Information Services (SWIS) integration.
 
   - Graphical interface for sorting and grouping devices, and for launching
     remote management and network utilities: PuTTY, pSCP, Ping, Traceroute,
@@ -15,6 +16,14 @@ NOSC provides an integrated interface for network management utilities.
 
 -- CHANGE LOG
 
+    4/19/2019 [DKI] >> SolarWinds SWIS integration.
+    + Added grouping and sorting settings management capabilities to
+      SortedTreeView.
+    + Refactored and expanded modules/device/settings.ps1 into a module, adding
+      support for multiple options.
+    + Refactored Device/SingleView to support SWIS and the updated settings
+      management options.
+      
     4/11/2018 [DKI] >> Updated Device/SingleView and SortedTreeView
     * Fixed pscp Send-File function call in SingleView context menu
     + Expanded the notes for the SortedTreeView
