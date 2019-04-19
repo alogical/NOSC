@@ -1808,9 +1808,11 @@ function New-SettingsManager {
                 }
             }
         }
+        else
+        {
+            $this.RegisterFields($Settings.Fields)
+        }
 
-        # Convert settings from json and create interface controls for each setting.
-        $this.RegisterFields($Settings.Fields)
         $this.LeafSelector.SelectedIndex = $this.LeafSelector.Items.IndexOf($Settings.LeafLabel)
 
         # No SettingsTab UI updates.
