@@ -96,7 +96,7 @@ function New-SettingsDialog ([PSCustomObject]$Settings) {
         $browse_dialog = New-Object System.Windows.Forms.OpenFileDialog
         $browse_dialog.Title = "Remote Shared Device Database File Selection"
         $browse_dialog.Multiselect = $false
-    
+
         # Currently only CSV flat databases are supported.
         $browse_dialog.Filter = "CSV Database (*.csv)|*.csv"
         $browse_dialog.FilterIndex = 1
@@ -146,6 +146,22 @@ function New-SettingsDialog ([PSCustomObject]$Settings) {
             $target.BackColor = [System.Drawing.SystemColors]::Highlight
             $target.ForeColor = [System.Drawing.SystemColors]::HighlightText
             $target.DisplayOptions()
+        }
+    }
+
+    $display_options_button_event = {
+        param ([System.Windows.Forms.Button]$sender, [System.EventArgs]$e)
+        $browse_dialog = New-Object System.Windows.Forms.OpenFileDialog
+        $browse_dialog.Title = "Remote Shared Device Database File Selection"
+        $browse_dialog.Multiselect = $false
+
+        # Currently only CSV flat databases are supported.
+        $browse_dialog.Filter = "TreeView Settings (*.view)|*.view"
+        $browse_dialog.FilterIndex = 1
+
+        if ($browse_dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+            $sender.Settings.DisplayOptions.Default =  $browse_dialog.FileName
+            $sender.Interface.DisplayOptions.Default.Text = $browse_dialog.FileName
         }
     }
     #endregion Control Events
@@ -312,21 +328,26 @@ function New-SettingsDialog ([PSCustomObject]$Settings) {
     $display_settingname.Width = $width_settingname
     $display_settingname.Text = "Default display settings"
 
-    $display_settingvalue = New-Object System.Windows.Forms.ListBox
+    $display_settingvalue = New-Object System.Windows.Forms.TextBox
+    $display_settingvalue.Text = $Settings.DisplayOptions.Default
     $left = $display_settingname.Location.X + $display_settingname.Width + $margin
     $display_settingvalue.Location = New-Object System.Drawing.Point($left, 0)
+    $display_settingvalue.Width = $width_settingvalue - 60
+    $display_settingvalue.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
+    $display_settingvalue.ReadOnly = $true
 
         $interface.DisplayOptions.Default = $display_settingvalue
-
-    # Load list of saved display settings.
-    if (Test-Path $settings.DisplayOptions.StorePath -PathType Container)
-    {
-        Get-ChildItem "$($settings.DisplayOptions.StorePath)\*" | %{
-            $display_settingvalue.Items.Add($_.Name)
-        }
-    }
-
         Add-Member -InputObject $display_settingvalue -MemberType NoteProperty -Name Settings -Value $settings
+
+    $display_default_browse = New-Object System.Windows.Forms.Button
+    $left = $display_settingvalue.Location.X + $display_settingvalue.Width + $margin
+    $display_default_browse.Location = New-Object System.Drawing.Point($left, 0)
+    $display_default_browse.Width = 50
+    $display_default_browse.Text = "Browse"
+    $display_default_browse.Add_Click($display_options_button_event)
+
+        Add-Member -InputObject $display_default_browse -MemberType NoteProperty -Name Interface -Value $interface
+        Add-Member -InputObject $display_default_browse -MemberType NoteProperty -Name Settings -Value $settings
     #endregion Display Options
 
     #region Options Layout
@@ -398,9 +419,9 @@ function New-SettingsDialog ([PSCustomObject]$Settings) {
     $display_options_container.Dock = [System.Windows.Forms.DockStyle]::Top
 
         # Manually positioned controls.
-        [void]$display_options_container.Controls.Add($display_settingtitle)
         [void]$display_options_container.Controls.Add($display_settingname)
         [void]$display_options_container.Controls.Add($display_settingvalue)
+        [void]$display_options_container.Controls.Add($display_default_browse)
 
         $interface.OptionsContainer.DisplayOptions = $display_options_container
 
