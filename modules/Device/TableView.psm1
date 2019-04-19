@@ -13,7 +13,6 @@
 
 Add-Type -AssemblyName System.Windows.Forms
 
-
 $ModuleInvocationPath  = [System.IO.Path]::GetDirectoryName($MyInvocation.MyCommand.Definition)
 
 ###############################################################################

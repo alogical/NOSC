@@ -171,7 +171,7 @@ Export-ModuleMember -Function *
 ## explicit call to Export-ModuleMember
 ###############################################################################
 ###############################################################################
-Import-Module "$ModuleInvocationPath\..\SortedTreeView\SortedTreeView.psm1" -Prefix Nav
+Import-Module "$ModuleInvocationPath\..\TreeView\TreeView.psm1" -Prefix Nav
 Import-Module "$ModuleInvocationPath\SolarWinds.psm1" -Prefix Orion
 Import-Module "$ModuleInvocationPath\Settings.psm1"
 

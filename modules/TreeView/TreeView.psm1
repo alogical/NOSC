@@ -965,40 +965,40 @@ function New-SettingsTab {
     [void]$SettingsContainer.Controls.Add($DataPanel)
 
     ### Sort By Options Flow Panel -------------------------------------------
-    $SortOptionsPanel = New-Object System.Windows.Forms.FlowLayoutPanel
+    $OptionsPanel = New-Object System.Windows.Forms.FlowLayoutPanel
 
-    $SortOptionsPanel.Name          = 'SortByOptions'
-    $SortOptionsPanel.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
-    $SortOptionsPanel.WrapContents  = $false
-    $SortOptionsPanel.BackColor     = [System.Drawing.Color]::White
-    $SortOptionsPanel.AutoSize      = $true
-    $SortOptionsPanel.AutoSizeMode  = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
+    $OptionsPanel.Name          = 'SortByOptions'
+    $OptionsPanel.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
+    $OptionsPanel.WrapContents  = $false
+    $OptionsPanel.BackColor     = [System.Drawing.Color]::White
+    $OptionsPanel.AutoSize      = $true
+    $OptionsPanel.AutoSizeMode  = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
 
-    [void]$SettingsContainer.Controls.Add($SortOptionsPanel)
-    $SettingsManager.SortLayout = $SortOptionsPanel
+    [void]$SettingsContainer.Controls.Add($OptionsPanel)
+    $SettingsManager.SortLayout = $OptionsPanel
 
     # Sort By Options Static Panel --------------------------------------------
-    $SortPanel = New-SortStaticPanel $SettingsManager $SortOptionsPanel
+    $SortPanel = New-SortStaticPanel $SettingsManager $OptionsPanel
 
-    [void]$SortOptionsPanel.Controls.Add($SortPanel)
+    [void]$OptionsPanel.Controls.Add($SortPanel)
 
     ### Group By Options Flow Panel -------------------------------------------
-    $GroupOptionsPanel = New-Object System.Windows.Forms.FlowLayoutPanel
+    $OptionsPanel = New-Object System.Windows.Forms.FlowLayoutPanel
 
-    $GroupOptionsPanel.Name          = 'GroupByOptions'
-    $GroupOptionsPanel.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
-    $GroupOptionsPanel.WrapContents  = $false
-    $GroupOptionsPanel.BackColor     = [System.Drawing.Color]::White
-    $GroupOptionsPanel.AutoSize      = $true
-    $GroupOptionsPanel.AutoSizeMode  = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
+    $OptionsPanel.Name          = 'GroupByOptions'
+    $OptionsPanel.FlowDirection = [System.Windows.Forms.FlowDirection]::TopDown
+    $OptionsPanel.WrapContents  = $false
+    $OptionsPanel.BackColor     = [System.Drawing.Color]::White
+    $OptionsPanel.AutoSize      = $true
+    $OptionsPanel.AutoSizeMode  = [System.Windows.Forms.AutoSizeMode]::GrowAndShrink
 
-    [void]$SettingsContainer.Controls.Add($GroupOptionsPanel)
-    $SettingsManager.GroupLayout = $GroupOptionsPanel
+    [void]$SettingsContainer.Controls.Add($OptionsPanel)
+    $SettingsManager.GroupLayout = $OptionsPanel
 
     # Group By Options Static Panel -------------------------------------------
-    $GroupPanel = New-GroupStaticPanel $SettingsManager $GroupOptionsPanel
+    $GroupPanel = New-GroupStaticPanel $SettingsManager $OptionsPanel
 
-    [void]$GroupOptionsPanel.Controls.Add($GroupPanel)
+    [void]$OptionsPanel.Controls.Add($GroupPanel)
 
     ### Return Component Control ----------------------------------------------
     return $SettingsTab
@@ -1014,8 +1014,8 @@ function New-DataStaticPanel {
             $SettingsManager
     )
 
-    $DataNodePanel = New-Object System.Windows.Forms.Panel
-    $DataNodePanel.BackColor = [System.Drawing.Color]::White
+    $Panel = New-Object System.Windows.Forms.Panel
+    $Panel.BackColor = [System.Drawing.Color]::White
 
     ### Field Selector --------------------------------------------------------
     $LeafSelector = New-Object System.Windows.Forms.ComboBox
@@ -1064,25 +1064,25 @@ function New-DataStaticPanel {
     # Set leaf data node label field selector reference for use by other controls
     $SettingsManager.LeafSelector = $LeafSelector
 
-    [void]$DataNodePanel.Controls.Add($LeafSelector)
+    [void]$Panel.Controls.Add($LeafSelector)
 
     ### Panel Label -----------------------------------------------------------
     $Label = New-Object System.Windows.Forms.Label
     $Label.Dock = [System.Windows.Forms.DockStyle]::Left
     $Label.Text = "Data Node Label:"
     $Label.TextAlign = [System.Drawing.ContentAlignment]::MiddleLeft
-    [void]$DataNodePanel.Controls.Add($Label)
+    [void]$Panel.Controls.Add($Label)
 
     ### Resize Panel ----------------------------------------------------------
     $width = 0
-    foreach ($ctrl in $DataNodePanel.Controls) {
+    foreach ($ctrl in $Panel.Controls) {
         $width += $ctrl.width
     }
-    $DataNodePanel.Width = $width + 10
-    $DataNodePanel.Height = 22
+    $Panel.Width = $width + 10
+    $Panel.Height = 22
 
     ### Return Component Control ----------------------------------------------
-    return $DataNodePanel
+    return $Panel
 }
 
 ### Group Static Panel Components ---------------------------------------------
@@ -1117,7 +1117,7 @@ function New-GroupStaticPanel {
         OptionsPanel      = $OptionsPanel
         Type              = "Group"
     }
-    $Button = New-SettingStaticButton @ButtonParams
+    $Button = New-AddOptionButton @ButtonParams
 
     [void]$Panel.Controls.Add($Button)
 
@@ -1157,7 +1157,7 @@ function New-SortStaticPanel {
         OptionsPanel      = $OptionsPanel
         Type              = "Sort"
     }
-    $Button = New-SettingStaticButton @ButtonParams
+    $Button = New-AddOptionButton @ButtonParams
 
     [void]$Panel.Controls.Add($Button)
 
@@ -1167,7 +1167,7 @@ function New-SortStaticPanel {
 
 ### Common Components ---------------------------------------------------------
 
-function New-SettingStaticButton {
+function New-AddOptionButton {
     param(
         # The SettingsManager object.
         [Parameter(Mandatory = $true)]

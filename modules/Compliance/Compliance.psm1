@@ -83,7 +83,7 @@ Export-ModuleMember -Function *
 ## explicit call to Export-ModuleMember
 ###############################################################################
 ###############################################################################
-Import-Module "$ModuleInvocationPath\..\SortedTreeView\SortedTreeView.psm1" -Prefix Tree
+Import-Module "$ModuleInvocationPath\..\TreeView\TreeView.psm1" -Prefix Tree
 Import-Module "$ModuleInvocationPath\DetailViewer.psm1" -Prefix Detail
 Import-Module "$ModuleInvocationPath\ReportViewer.psm1" -Prefix Report
 
